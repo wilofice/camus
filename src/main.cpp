@@ -1,3 +1,8 @@
+// =================================================================
+// src/main.cpp
+// =================================================================
+// The main entry point for the Camus CLI application.
+
 #include "Camus/CliParser.hpp"
 #include "Camus/Core.hpp"
 #include <iostream>
@@ -34,4 +39,3 @@ int main(int argc, char** argv) {
 
     return 0;
 }
-
