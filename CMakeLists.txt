@@ -22,11 +22,13 @@ FetchContent_MakeAvailable(cli11)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "")
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "")
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "")
+# set(LLAMA_METAL OFF CACHE BOOL "") # <--- ADDED THIS LINE TO FIX THE BUILD ON MACOS
+
 # Add other backend options as needed, e.g., set(LLAMA_CUBLAS ON CACHE BOOL "") for NVIDIA GPU support
 FetchContent_Declare(
   llama_cpp
   GIT_REPOSITORY https://github.com/ggerganov/llama.cpp.git
-  GIT_TAG b3219 # A recent, stable commit
+  GIT_TAG b3219 # A recent, stable release tag
 )
 FetchContent_MakeAvailable(llama_cpp)
 

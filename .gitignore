@@ -50,7 +50,7 @@ Temporary Items
 *~
 
 # Binaries
-camus
+
 *.exe
 *.out
 *.app
