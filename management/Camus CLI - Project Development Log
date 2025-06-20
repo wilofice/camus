@@ -1,0 +1,128 @@
+Camus CLI: Project Development Log & Documentation
+Status: In-Progress (Phase 3: Development)
+Version: 1.2
+Date: June 19, 2025
+
+This document chronicles the journey of the Camus project, from initial conception to the current state of development. It outlines key decisions, architectural designs, and implementation milestones.
+
+Phase 1: Study & Specification
+This phase focused on establishing a clear vision for the project and making foundational technology choices.
+
+1.1. Core Concept
+The project's goal was defined: to create a high-performance, locally-run, command-line AI assistant for C++ developers. The assistant would be written in C++ for maximum speed and would leverage the llama.cpp framework to interact with open-source Large Language Models (LLMs) directly on a user's machine. The CLI was officially named Camus.
+
+1.2. Technology Stack Selection
+Build System: CMake
+A thorough comparison was made between CMake, Meson, and Bazel.
+
+Bazel: Deemed too complex for a single-application project, despite its excellent performance.
+
+Meson: A strong contender due to its modern syntax and speed.
+
+CMake: Ultimately chosen for its massive ecosystem, unparalleled IDE support, and lower integration risk, especially since our core dependency, llama.cpp, uses CMake.
+
+Decision: Proceed with CMake.
+
+CLI Library: CLI11
+The choice for a command-line parsing library was between CLI11 and the classic Boost.Program_options.
+
+Boost.Program_options: Powerful but has a dated, verbose API and requires linking against compiled Boost libraries, adding build complexity.
+
+CLI11: A modern, C++11/17-based, header-only library with a clean, intuitive syntax. Its header-only nature makes integration via CMake's FetchContent trivial.
+
+Decision: Proceed with CLI11.
+
+1.3. Functional Specification
+A detailed specification was drafted, outlining the core commands for the Camus CLI:
+
+init: To create a local .camus/config.yml file.
+
+modify: To alter a source file based on a natural language prompt.
+
+build: A wrapper to run the project's build command, with LLM-powered error analysis on failure.
+
+test: A wrapper for the test command, also with LLM-powered failure analysis.
+
+refactor: For applying specific, targeted refactoring patterns.
+
+commit: To generate a conventional commit message from staged changes.
+
+push: A simple wrapper for git push.
+
+The concept of a multi-model pipeline for the modify command was noted as a valuable future enhancement.
+
+1.4. LLM Evaluation
+A list of 10 recommended, llama.cpp-compatible GGUF models was compiled to guide users. The list balances performance, coding proficiency, and hardware requirements, including models like Llama 3 8B, DeepSeek Coder 6.7B, and Mixtral 8x7B.
+
+Phase 2: Architectural Design
+This phase translated our specifications into a tangible C++ project structure.
+
+2.1. Modular Design
+A modular architecture was designed to ensure separation of concerns:
+
+CliParser: Encapsulates all interactions with the CLI11 library. Responsible for defining commands and parsing arguments.
+
+Core: The main application orchestrator. Dispatches tasks based on parsed commands.
+
+SysInteraction: Handles all system-level operations like reading/writing files and executing external processes.
+
+LlmInteraction: A dedicated interface for all communication with the llama.cpp backend.
+
+2.2. Code & Build Skeleton
+The initial C++ header files (.hpp) for the above modules were created. A foundational CMakeLists.txt file was written to:
+
+Define the project and set the C++ standard to 17.
+
+Use FetchContent to download and include the CLI11 dependency.
+
+Define the camus executable target.
+
+Phase 3: Development & Implementation (Current State)
+This phase involves writing the C++ source code to implement the designed architecture.
+
+3.1. Initial Implementation (init command)
+The first functional command, camus init, was implemented. This involved:
+
+Implementing the CliParser class to define the subcommand structure.
+
+Implementing the SysInteraction class with methods for creating directories and writing files.
+
+Implementing the Core::handleInit method to create the .camus/config.yml file with default settings.
+
+3.2. Core Logic Implementation (modify command)
+The workflow for the modify command was implemented next.
+
+The Core::handleModify method was written to:
+
+Read the content of the file specified by the user.
+
+Construct a detailed prompt containing the user's request and the original code.
+
+Call the LlmInteraction layer to get the modified code.
+
+Display the result to the user.
+
+3.3. llama.cpp Integration
+This was a major milestone where the stubbed AI logic was replaced with a real implementation.
+
+CMake Update: The CMakeLists.txt file was updated to use FetchContent to download and build llama.cpp as part of our project's configuration step. The camus executable was linked against the llama library target.
+
+LlmInteraction Implementation: The C++ source code for LlmInteraction was written.
+
+The constructor now loads a GGUF model from a specified file path using llama_load_model_from_file.
+
+The getCompletion method now uses the llama.cpp API (llama_tokenize, llama_eval, llama_sample_token_greedy) to perform actual inference and generate text.
+
+Current Project Status
+The Camus project is now a functional C++ application that can be compiled with CMake. It successfully:
+
+Parses complex command-line arguments and subcommands (init, modify, etc.).
+
+Creates a default configuration file (camus init).
+
+Loads a llama.cpp-compatible GGUF model from disk.
+
+Performs real LLM inference to modify a code file based on a user's prompt (camus modify).
+
+Next Immediate Steps
+The immediate priority is to make the application more robust and configurable by replacing the hardcoded model path in Core.cpp with logic that reads the path from the .camus/config.yml file 
