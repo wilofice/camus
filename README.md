@@ -1,6 +1,6 @@
 # Camus CLI
 
-A high-performance, locally-run command-line AI assistant for C++ developers. Camus leverages open-source Large Language Models (LLMs) through llama.cpp to provide intelligent code modifications, build error analysis, and development workflow automation—all running directly on your machine.
+A high-performance, locally-run command-line AI assistant for developers. Camus leverages open-source Large Language Models (LLMs) through llama.cpp to provide intelligent code modifications, build error analysis, and development workflow automation—all running directly on your machine.
 
 ## Overview
 
