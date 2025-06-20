@@ -138,7 +138,7 @@ int Core::handleModify() {
 
     std::cout << "Constructing prompt for LLM..." << std::endl;
     std::stringstream prompt_stream;
-    prompt_stream << "You are an expert C++ programmer. Your task is to modify the following code based on the user's request. "
+    prompt_stream << "You are an expert programmer in many languages. Your task is to modify the following code based on the user's request. "
                   << "You must only output the complete, modified source code. Do not add any conversational text, explanations, or markdown code blocks.\n\n"
                   << "User Request: " << m_commands.prompt << "\n\n"
                   << "--- Original Code ---\n"

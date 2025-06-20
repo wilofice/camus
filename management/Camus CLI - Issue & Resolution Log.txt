@@ -1,0 +1,39 @@
+Camus CLI - Issue & Resolution Log
+This document chronicles the technical challenges, errors, and their corresponding solutions encountered during the development of the Camus CLI.
+
+Issue #1: Initial llama.cpp API Mismatch
+Symptom: First compilation attempt of LlmInteraction.cpp failed with numerous errors, including no matching function for call to 'llama_backend_init' and many warnings about "deprecated" functions.
+
+Root Cause: The CMakeLists.txt was configured to fetch the latest master branch of llama.cpp, but the C++ code was written against an older, different version of its API. This created a significant function signature mismatch.
+
+Solution: The problem was resolved by synchronizing the code with a specific, stable version of the library. We modified CMakeLists.txt to fetch GIT_TAG b2609 and updated LlmInteraction.cpp to use the corresponding API for that version.
+
+Issue #2: Invalid Git Tag in FetchContent
+Symptom: The CMake configuration step failed with the error: error: pathspec 'b2609' did not match any file(s) known to git.
+
+Root Cause: The git tag b2609 chosen in the previous step was not a valid tag or commit hash in the official llama.cpp repository.
+
+Solution: The invalid tag was replaced in CMakeLists.txt with a verified, valid, and recent stable tag: b3219.
+
+Issue #3: C++ Incomplete Type Error with unique_ptr
+Symptom: Compilation failed with the error: invalid application of 'sizeof' to an incomplete type 'Camus::LlmInteraction'. This occurred even after fixing the API issues.
+
+Root Cause: This was a C++ architecture issue. Core.hpp used forward declarations for LlmInteraction and SysInteraction while also containing std::unique_ptr members for them. unique_ptr requires the full definition of a type to know how to delete it, but this definition was not visible in the header.
+
+Solution: We followed the standard C++ pattern for this scenario (the "PIMPL idiom"). The destructor for Core was declared in Core.hpp (~Core();) and defined with = default; in Core.cpp. This forces the compiler to generate the destructor only after it has seen the full class definitions from the .cpp file's includes.
+
+Issue #4: Linker Error for ConfigParser
+Symptom: The project compiled successfully, but the final linking stage failed with Undefined symbol: Camus::ConfigParser::ConfigParser(...).
+
+Root Cause: The newly created ConfigParser.cpp file had not been added to the list of source files in CMakeLists.txt, so it was never compiled.
+
+Solution: The CMakeLists.txt was made more robust. Instead of listing each source file manually, it was updated to use file(GLOB_RECURSE CAMUS_SOURCES "src/*.cpp") to automatically find and include all source files, preventing this class of error in the future.
+
+Issue #5: macOS Metal Build & Runtime Errors
+Symptom (Build): The initial build with Metal enabled failed with metal: error: no such file or directory: 'ggml-metal.metal'.
+
+Symptom (Runtime): After using an environment variable to find the Metal source, the program failed at runtime with fatal error: 'ggml-common.h' file not found.
+
+Root Cause: The core issue was that the pre-compiled Metal shader library (default.metallib), which is required by llama.cpp at runtime, was not being placed where the final camus executable could find it. The runtime error was a fallback attempt by llama.cpp to compile the shader on the fly, which also failed because it couldn't find its necessary header files.
+
+Solution: A robust post-build command was added to CMakeLists.txt. This command explicitly depends on the ggml-metal target (ensuring it's built first) and then copies the resulting default.metallib file into the same directory as the camus executable, making it available at runtime without needing environment variables.
