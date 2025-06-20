@@ -1,3 +1,4 @@
+# CMakeLists.txt for the Camus project
 # This file now includes the logic to fetch and build llama.cpp
 
 cmake_minimum_required(VERSION 3.16)
@@ -22,7 +23,7 @@ FetchContent_MakeAvailable(cli11)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "")
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "")
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "")
-# set(LLAMA_METAL OFF CACHE BOOL "") # <--- ADDED THIS LINE TO FIX THE BUILD ON MACOS
+#set(LLAMA_METAL OFF CACHE BOOL "") # Disable Metal for broader macOS compatibility
 
 # Add other backend options as needed, e.g., set(LLAMA_CUBLAS ON CACHE BOOL "") for NVIDIA GPU support
 FetchContent_Declare(
@@ -32,14 +33,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(llama_cpp)
 
+# --- Project Structure ---------------------------------------------
+
+# Automatically find all .cpp files in the src directory.
+# This is more robust than listing each file manually.
+file(GLOB_RECURSE CAMUS_SOURCES "src/*.cpp")
+
 # --- Executable Target ---------------------------------------------
+
+# Define the main executable for our Camus CLI using the sources found above.
 add_executable(
   camus
-  src/main.cpp
-  src/Camus/CliParser.cpp
-  src/Camus/Core.cpp
-  src/Camus/LlmInteraction.cpp
-  src/Camus/SysInteraction.cpp
+  ${CAMUS_SOURCES}
 )
 
 target_include_directories(camus PUBLIC include)
