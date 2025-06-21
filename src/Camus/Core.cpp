@@ -26,7 +26,7 @@ static std::vector<std::string> to_lines(const std::string& text) {
     return lines;
 }
 
-Core::Core(const Commands& commands)
+Core::Core(const Commands& commands) 
     : m_commands(commands),
       m_config(std::make_unique<ConfigParser>(".camus/config.yml")),
       m_sys(std::make_unique<SysInteraction>())
@@ -46,9 +46,9 @@ Core::Core(const Commands& commands)
         if (!model_dir.empty() && model_dir.back() != '/' && model_dir.back() != '\\') {
             model_dir += '/';
         }
-
+        
         std::string full_model_path = model_dir + model_name;
-
+        
         try {
            m_llm = std::make_unique<LlmInteraction>(full_model_path);
         } catch (const std::exception& e) {
@@ -67,7 +67,7 @@ int Core::run() {
         std::cerr << "LLM not available. Cannot proceed." << std::endl;
         return 1;
     }
-
+    
     if (m_commands.active_command == "init") {
         return handleInit();
     } else if (m_commands.active_command == "modify") {
@@ -92,10 +92,10 @@ int Core::run() {
 
 int Core::handleInit() {
     std::cout << "Initializing Camus configuration..." << std::endl;
-
+    
     const std::string defaultConfig = R"(# Camus Configuration v1.0
 model_path: /path/to/your/models/
-default_model: deepseek-coder-6.7b-instruct.Q4_K_M.gguf
+default_model: Llama-3-8B-Instruct.Q4_K_M.gguf
 build_command: 'cmake --build ./build'
 test_command: 'ctest --test-dir ./build'
 )";
@@ -127,7 +127,7 @@ test_command: 'ctest --test-dir ./build'
 
 int Core::handleModify() {
     std::cout << "Reading file: " << m_commands.file_path << "..." << std::endl;
-
+    
     std::string original_code;
     try {
         original_code = m_sys->readFile(m_commands.file_path);
@@ -137,23 +137,21 @@ int Core::handleModify() {
     }
 
     std::cout << "Constructing prompt for LLM..." << std::endl;
-
-    // --- Use DeepSeek Coder Instruct Prompt Template ---
     std::stringstream prompt_stream;
-    prompt_stream << "You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company.\n"
-                  << "### Instruction:\n"
-                  << "Your task is to modify the provided code based on the user's request. "
+    prompt_stream << "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
+                  << "You are an expert programmer. Your task is to modify the provided code based on the user's request. "
                   << "Your response must contain ONLY the raw, complete source code for the modified file. "
-                  << "Do not include any conversational text, explanations, or markdown formatting.\n\n"
-                  << "User Request: " << m_commands.prompt << "\n\n"
+                  << "Do not include any conversational text, explanations, or markdown formatting like ``` or ```language.\n\n"
+                  << "<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n"
+                  << "Modify the following code with this request: " << m_commands.prompt << "\n\n"
                   << "Original Code:\n"
                   << "```\n"
                   << original_code << "\n"
-                  << "```\n"
-                  << "### Response:\n";
+                  << "```\n\n"
+                  << "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n";
 
     std::string full_prompt = prompt_stream.str();
-
+    
     std::cout << "Sending request to LLM... (this may take a moment)" << std::endl;
     std::string modified_code;
     try {
@@ -164,7 +162,8 @@ int Core::handleModify() {
     }
 
     std::cout << "\n--- Proposed Changes ---" << std::endl;
-
+    
+    // Use the dtl library API
     auto original_lines = to_lines(original_code);
     auto modified_lines = to_lines(modified_code);
     
