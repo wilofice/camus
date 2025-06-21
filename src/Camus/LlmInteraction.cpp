@@ -1,8 +1,6 @@
 // =================================================================
 // src/Camus/LlmInteraction.cpp
 // =================================================================
-// Real implementation using llama.cpp - Now with robust sampling to prevent loops
-
 #include "Camus/LlmInteraction.hpp"
 #include "llama.h"
 #include <stdexcept>
@@ -10,9 +8,9 @@
 #include <iostream>
 #include <thread>
 #include <string>
-#include <chrono> // For timeout
-#include <algorithm> // For std::find_if
-#include <cctype> // for std::isspace
+#include <chrono>
+#include <algorithm>
+#include <cctype>
 
 namespace Camus {
 
@@ -77,12 +75,8 @@ LlmInteraction::LlmInteraction(const std::string& model_path) {
 }
 
 LlmInteraction::~LlmInteraction() {
-    if (m_context) {
-        llama_free(m_context);
-    }
-    if (m_model) {
-        llama_free_model(m_model);
-    }
+    if (m_context) llama_free(m_context);
+    if (m_model) llama_free_model(m_model);
     llama_backend_free();
     std::cout << "[INFO] Cleaned up llama.cpp resources." << std::endl;
 }
@@ -92,7 +86,7 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
     tokens_list.resize(prompt.size());
 
     int n_tokens = llama_tokenize(
-        m_model, prompt.c_str(), static_cast<int>(prompt.size()), 
+        m_model, prompt.c_str(), static_cast<int>(prompt.size()),
         tokens_list.data(), tokens_list.size(), true, false
     );
 
@@ -102,34 +96,32 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
     if (static_cast<uint32_t>(n_tokens) > llama_n_ctx(m_context)) {
         throw std::runtime_error("Prompt is too long for the model's context window.");
     }
-    
+
     llama_kv_cache_clear(m_context);
     if (llama_decode(m_context, llama_batch_get_one(tokens_list.data(), n_tokens, 0, 0))) {
         throw std::runtime_error("Failed to decode prompt.");
     }
-    
+
     std::string result;
     int n_generated = 0;
     const int max_new_tokens = 4096;
     const long long timeout_seconds = 120;
     auto start_time = std::chrono::steady_clock::now();
-    
-    // --- Use a temporary vector to store recent tokens for repetition penalty ---
-    std::vector<llama_token> last_n_tokens;
-    const int n_keep = n_tokens;
-    last_n_tokens.reserve(llama_n_ctx(m_context));
-    last_n_tokens.insert(last_n_tokens.end(), tokens_list.begin() + n_keep, tokens_list.end());
 
+    std::vector<llama_token> last_n_tokens;
+    last_n_tokens.reserve(llama_n_ctx(m_context));
+    last_n_tokens.insert(last_n_tokens.end(), tokens_list.begin(), tokens_list.end());
+
+    // Get the special token IDs for Llama 3
+    const llama_token eot_token = 128009; // <|eot_id|>
 
     while (n_generated < max_new_tokens) {
-        // --- Timeout Check ---
         auto current_time = std::chrono::steady_clock::now();
         auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
         if (elapsed_seconds > timeout_seconds) {
             throw std::runtime_error("Model generation timed out after " + std::to_string(timeout_seconds) + " seconds.");
         }
 
-        // --- ROBUST SAMPLING ---
         auto* logits  = llama_get_logits_ith(m_context, 0);
         auto* candidates = new llama_token_data[llama_n_vocab(m_model)];
         llama_token_data_array candidates_p = { candidates, static_cast<size_t>(llama_n_vocab(m_model)), false };
@@ -140,20 +132,19 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
             candidates[token_id].p = 0.0f;
         }
 
-        // Apply repetition penalty
         llama_sample_repetition_penalties(m_context, &candidates_p, last_n_tokens.data(), last_n_tokens.size(), 1.1f, 64, 1.0f);
-
-        // Temperature sampling
         llama_sample_top_k(m_context, &candidates_p, 40, 1);
         llama_sample_top_p(m_context, &candidates_p, 0.95f, 1);
-        llama_sample_temp(m_context, &candidates_p, 0.8f);
-        
-        // Final sampling decision
+        llama_sample_temp(m_context, &candidates_p, 0.1f); // Lowered temperature
+
         llama_token new_token_id = llama_sample_token(m_context, &candidates_p);
-        
+
         delete[] candidates;
 
-        if (new_token_id == llama_token_eos(m_model)) break;
+        // Stop generatin "on if we encounter the end-of-turn token or the standard end-of-sequence token.
+        if (new_token_id == llama_token_eos(m_model) || new_token_id == eot_token) {
+            break;
+        }
 
         char piece[8] = {0};
         llama_token_to_piece(m_model, new_token_id, piece, sizeof(piece), false);
