@@ -1,7 +1,7 @@
 // =================================================================
 // src/Camus/LlmInteraction.cpp
 // =================================================================
-// Real implementation using llama.cpp - API has been corrected
+// Real implementation using llama.cpp - Now with robust sampling to prevent loops
 
 #include "Camus/LlmInteraction.hpp"
 #include "llama.h"
@@ -10,8 +10,44 @@
 #include <iostream>
 #include <thread>
 #include <string>
+#include <chrono> // For timeout
+#include <algorithm> // For std::find_if
+#include <cctype> // for std::isspace
 
 namespace Camus {
+
+// Helper function to trim markdown code fences and language specifiers
+static void clean_llm_output(std::string& output) {
+    // Trim leading whitespace
+    output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+
+    // Trim trailing whitespace
+    output.erase(std::find_if(output.rbegin(), output.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), output.end());
+
+    // Remove starting ```language and trailing ```
+    if (output.size() > 3 && output.substr(0, 3) == "```") {
+        size_t first_newline = output.find('\n');
+        if (first_newline != std::string::npos) {
+            output = output.substr(first_newline + 1);
+        }
+    }
+    if (output.size() > 3 && output.substr(output.size() - 3) == "```") {
+        output = output.substr(0, output.size() - 3);
+    }
+    
+    // Trim again after removing fences
+    output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    output.erase(std::find_if(output.rbegin(), output.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), output.end());
+}
+
 
 LlmInteraction::LlmInteraction(const std::string& model_path) {
     // Initialize llama.cpp backend
@@ -52,44 +88,48 @@ LlmInteraction::~LlmInteraction() {
 }
 
 std::string LlmInteraction::getCompletion(const std::string& prompt) {
-    // The C-style API requires us to manage the token buffer.
-    // We create a vector that is definitely large enough.
     std::vector<llama_token> tokens_list;
     tokens_list.resize(prompt.size());
 
     int n_tokens = llama_tokenize(
-        m_model, 
-        prompt.c_str(), 
-        static_cast<int>(prompt.size()), 
-        tokens_list.data(), 
-        tokens_list.size(), 
-        true,  // add BOS token
-        false  // special tokens
+        m_model, prompt.c_str(), static_cast<int>(prompt.size()), 
+        tokens_list.data(), tokens_list.size(), true, false
     );
 
-    if (n_tokens < 0) {
-        throw std::runtime_error("Failed to tokenize prompt.");
-    }
+    if (n_tokens < 0) throw std::runtime_error("Failed to tokenize prompt.");
     tokens_list.resize(n_tokens);
 
-    // Check if the prompt is too long for the context
     if (static_cast<uint32_t>(n_tokens) > llama_n_ctx(m_context)) {
         throw std::runtime_error("Prompt is too long for the model's context window.");
     }
     
-    // Clear the KV cache and evaluate the initial prompt
     llama_kv_cache_clear(m_context);
     if (llama_decode(m_context, llama_batch_get_one(tokens_list.data(), n_tokens, 0, 0))) {
         throw std::runtime_error("Failed to decode prompt.");
     }
     
     std::string result;
-    int n_cur = n_tokens;
+    int n_generated = 0;
     const int max_new_tokens = 4096;
+    const long long timeout_seconds = 120;
+    auto start_time = std::chrono::steady_clock::now();
     
-    // Main generation loop
-    while (n_cur <= max_new_tokens) {
-        // Sample the next token
+    // --- Use a temporary vector to store recent tokens for repetition penalty ---
+    std::vector<llama_token> last_n_tokens;
+    const int n_keep = n_tokens;
+    last_n_tokens.reserve(llama_n_ctx(m_context));
+    last_n_tokens.insert(last_n_tokens.end(), tokens_list.begin() + n_keep, tokens_list.end());
+
+
+    while (n_generated < max_new_tokens) {
+        // --- Timeout Check ---
+        auto current_time = std::chrono::steady_clock::now();
+        auto elapsed_seconds = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count();
+        if (elapsed_seconds > timeout_seconds) {
+            throw std::runtime_error("Model generation timed out after " + std::to_string(timeout_seconds) + " seconds.");
+        }
+
+        // --- ROBUST SAMPLING ---
         auto* logits  = llama_get_logits_ith(m_context, 0);
         auto* candidates = new llama_token_data[llama_n_vocab(m_model)];
         llama_token_data_array candidates_p = { candidates, static_cast<size_t>(llama_n_vocab(m_model)), false };
@@ -100,28 +140,43 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
             candidates[token_id].p = 0.0f;
         }
 
-        llama_token new_token_id = llama_sample_token_greedy(m_context, &candidates_p);
+        // Apply repetition penalty
+        llama_sample_repetition_penalties(m_context, &candidates_p, last_n_tokens.data(), last_n_tokens.size(), 1.1f, 64, 1.0f);
+
+        // Temperature sampling
+        llama_sample_top_k(m_context, &candidates_p, 40, 1);
+        llama_sample_top_p(m_context, &candidates_p, 0.95f, 1);
+        llama_sample_temp(m_context, &candidates_p, 0.8f);
+        
+        // Final sampling decision
+        llama_token new_token_id = llama_sample_token(m_context, &candidates_p);
+        
         delete[] candidates;
 
-        // Break if we hit the end-of-sequence token
-        if (new_token_id == llama_token_eos(m_model)) {
-            break;
-        }
+        if (new_token_id == llama_token_eos(m_model)) break;
 
-        // Append the token string to the result
         char piece[8] = {0};
         llama_token_to_piece(m_model, new_token_id, piece, sizeof(piece), false);
         result += piece;
         std::cout << piece << std::flush;
 
-        // Prepare for the next iteration
-        if (llama_decode(m_context, llama_batch_get_one(&new_token_id, 1, n_cur, 0))) {
+        // Update context for next token
+        last_n_tokens.push_back(new_token_id);
+        if (last_n_tokens.size() > 64) {
+            last_n_tokens.erase(last_n_tokens.begin());
+        }
+
+        if (llama_decode(m_context, llama_batch_get_one(&new_token_id, 1, n_tokens + n_generated, 0))) {
             throw std::runtime_error("Failed to decode generated token.");
         }
-        n_cur++;
+        n_generated++;
     }
 
     std::cout << std::endl;
+    
+    // --- Post-processing ---
+    clean_llm_output(result);
+
     return result;
 }
 

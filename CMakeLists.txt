@@ -18,49 +18,48 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cli11)
 
 # 2. llama.cpp for LLM interaction
-# Using a specific tag for stability and enabling Metal.
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "")
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "")
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "")
-set(LLAMA_METAL ON CACHE BOOL "") # Ensure Metal is explicitly enabled
-
-# Add other backend options as needed, e.g., set(LLAMA_CUBLAS ON CACHE BOOL "") for NVIDIA GPU support
+set(LLAMA_METAL ON CACHE BOOL "") 
 FetchContent_Declare(
   llama_cpp
   GIT_REPOSITORY https://github.com/ggerganov/llama.cpp.git
-  GIT_TAG b3219 # A recent, stable release tag
+  GIT_TAG b3219 
 )
 FetchContent_MakeAvailable(llama_cpp)
 
-# --- Project Structure ---------------------------------------------
+# 3. dtl (Diff Template Library) for generating diffs
+# Corrected GIT_TAG to a valid release version.
+FetchContent_Declare(
+  diff_lib
+  GIT_REPOSITORY https://github.com/cubicdaiya/dtl.git
+  GIT_TAG v1.21
+)
+FetchContent_MakeAvailable(diff_lib)
 
-# Automatically find all .cpp files in the src directory.
-# This is more robust than listing each file manually.
+
+# --- Project Structure ---------------------------------------------
 file(GLOB_RECURSE CAMUS_SOURCES "src/*.cpp")
 
 # --- Executable Target ---------------------------------------------
-
-# Define the main executable for our Camus CLI using the sources found above.
 add_executable(
   camus
   ${CAMUS_SOURCES}
 )
 
+# --- Include Directories -------------------------------------------
 target_include_directories(camus PUBLIC include)
 
-# Link our executable against the libraries it needs.
-# `llama` is the library target created by llama.cpp's build process.
+# The dtl library's headers are in its 'dtl' subdirectory.
+target_include_directories(camus PRIVATE ${diff_lib_SOURCE_DIR})
+
+# --- Linker Settings -----------------------------------------------
 target_link_libraries(camus PRIVATE CLI11::CLI11 llama)
 
 # --- Post-Build Step for Runtime Dependencies ----------------------
-
-# This ensures that the ggml-metal target (which creates default.metallib)
-# is built before our main camus target.
 add_dependencies(camus ggml-metal)
 
-# After the 'camus' executable is built, copy the required Metal library
-# to the same directory, so it can be found at runtime.
-# This version uses the explicit path to the generated file.
 add_custom_command(
     TARGET camus POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
