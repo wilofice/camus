@@ -14,30 +14,25 @@
 
 namespace Camus {
 
-// Helper function to trim markdown code fences and language specifiers
+// A more robust function to find and extract code between markdown fences.
 static void clean_llm_output(std::string& output) {
-    // Trim leading whitespace
-    output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
+    const std::string fence = "```";
+    size_t start_pos = output.find(fence);
 
-    // Trim trailing whitespace
-    output.erase(std::find_if(output.rbegin(), output.rend(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }).base(), output.end());
-
-    // Remove starting ```language and trailing ```
-    if (output.size() > 3 && output.substr(0, 3) == "```") {
-        size_t first_newline = output.find('\n');
-        if (first_newline != std::string::npos) {
-            output = output.substr(first_newline + 1);
+    if (start_pos != std::string::npos) {
+        // Find the position of the newline after the opening fence
+        size_t content_start = output.find('\n', start_pos);
+        if (content_start != std::string::npos) {
+            // Find the closing fence, starting the search after the content begins
+            size_t end_pos = output.rfind(fence);
+            if (end_pos != std::string::npos && end_pos > content_start) {
+                // Extract the content between the fences
+                output = output.substr(content_start + 1, end_pos - (content_start + 1));
+            }
         }
     }
-    if (output.size() > 3 && output.substr(output.size() - 3) == "```") {
-        output = output.substr(0, output.size() - 3);
-    }
-    
-    // Trim again after removing fences
+
+    // Final trim of any remaining whitespace
     output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
         return !std::isspace(ch);
     }));
@@ -48,23 +43,19 @@ static void clean_llm_output(std::string& output) {
 
 
 LlmInteraction::LlmInteraction(const std::string& model_path) {
-    // Initialize llama.cpp backend
     llama_backend_init();
 
-    // Set model and context parameters
     auto mparams = llama_model_default_params();
     auto cparams = llama_context_default_params();
     cparams.n_ctx = 4096;
     cparams.n_threads = std::thread::hardware_concurrency();
     cparams.n_threads_batch = std::thread::hardware_concurrency();
-    
-    // Load the model
+
     m_model = llama_load_model_from_file(model_path.c_str(), mparams);
     if (m_model == nullptr) {
         throw std::runtime_error("Failed to load model from path: " + model_path);
     }
 
-    // Create the context
     m_context = llama_new_context_with_model(m_model, cparams);
     if (m_context == nullptr) {
         llama_free_model(m_model);
@@ -112,8 +103,7 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
     last_n_tokens.reserve(llama_n_ctx(m_context));
     last_n_tokens.insert(last_n_tokens.end(), tokens_list.begin(), tokens_list.end());
 
-    // Get the special token IDs for Llama 3
-    const llama_token eot_token = 128009; // <|eot_id|>
+    const llama_token eot_token = 128009;
 
     while (n_generated < max_new_tokens) {
         auto current_time = std::chrono::steady_clock::now();
@@ -135,13 +125,12 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
         llama_sample_repetition_penalties(m_context, &candidates_p, last_n_tokens.data(), last_n_tokens.size(), 1.1f, 64, 1.0f);
         llama_sample_top_k(m_context, &candidates_p, 40, 1);
         llama_sample_top_p(m_context, &candidates_p, 0.95f, 1);
-        llama_sample_temp(m_context, &candidates_p, 0.1f); // Lowered temperature
+        llama_sample_temp(m_context, &candidates_p, 0.4f);
 
         llama_token new_token_id = llama_sample_token(m_context, &candidates_p);
 
         delete[] candidates;
 
-        // Stop generatin "on if we encounter the end-of-turn token or the standard end-of-sequence token.
         if (new_token_id == llama_token_eos(m_model) || new_token_id == eot_token) {
             break;
         }
@@ -151,7 +140,6 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
         result += piece;
         std::cout << piece << std::flush;
 
-        // Update context for next token
         last_n_tokens.push_back(new_token_id);
         if (last_n_tokens.size() > 64) {
             last_n_tokens.erase(last_n_tokens.begin());
@@ -164,8 +152,7 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
     }
 
     std::cout << std::endl;
-    
-    // --- Post-processing ---
+
     clean_llm_output(result);
 
     return result;
