@@ -9,9 +9,16 @@
 #include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <cstdio>
+#include <memory>
+#include <array>
 
 #if defined(_WIN32)
 #include <direct.h>
+#define popen _popen
+#define pclose _pclose
+#else
+#include <sys/wait.h>
 #endif
 
 
@@ -57,9 +64,48 @@ bool SysInteraction::createDirectory(const std::string& dir_path) {
 }
 
 std::pair<std::string, int> SysInteraction::executeCommand(const std::string& command, const std::vector<std::string>& args) {
-    // This is a stub and does not actually execute a command.
-    // A real implementation would use platform-specific APIs like popen or CreateProcess.
-    return {"Command executed successfully (stub).", 0};
+    // Build the full command string
+    std::string full_command = command;
+    for (const auto& arg : args) {
+        // Basic shell escaping - wrap arguments containing spaces in quotes
+        if (arg.find(' ') != std::string::npos) {
+            full_command += " \"" + arg + "\"";
+        } else {
+            full_command += " " + arg;
+        }
+    }
+    
+    // Redirect stderr to stdout to capture all output
+    full_command += " 2>&1";
+    
+    // Open pipe to execute command
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(full_command.c_str(), "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("Failed to execute command: " + full_command);
+    }
+    
+    // Read output from the command
+    std::array<char, 128> buffer;
+    std::string result;
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    
+    // Get the exit status
+    int exit_status = pclose(pipe.release());
+    
+    // On Unix-like systems, pclose returns the exit status in a special format
+    // We need to extract the actual exit code
+#if !defined(_WIN32)
+    if (WIFEXITED(exit_status)) {
+        exit_status = WEXITSTATUS(exit_status);
+    } else {
+        // Process terminated abnormally
+        exit_status = -1;
+    }
+#endif
+    
+    return {result, exit_status};
 }
 
 } // namespace Camus

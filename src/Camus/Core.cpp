@@ -7,9 +7,11 @@
 #include "Camus/ConfigParser.hpp"
 #include "Camus/LlmInteraction.hpp"
 #include "Camus/SysInteraction.hpp"
+#include "Camus/DiffGenerator.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
+#include <algorithm>
 
 namespace Camus {
 
@@ -150,11 +152,30 @@ int Core::handleModify() {
     std::string modified_code = m_llm->getCompletion(full_prompt);
 
     std::cout << "\n--- LLM Response Received ---" << std::endl;
-    // TODO: Implement a proper diff view between 'file_content' and 'modified_code'.
-    std::cout << modified_code << std::endl;
-    std::cout << "---------------------------" << std::endl;
-
-    // TODO: Implement interactive confirmation to write changes to file.
+    
+    // Create DiffGenerator and display colored diff
+    DiffGenerator differ(file_content, modified_code);
+    differ.printColoredDiff();
+    
+    // Prompt user for confirmation
+    std::cout << "\nApply changes? [y]es, [n]o: ";
+    std::string response;
+    std::getline(std::cin, response);
+    
+    // Convert response to lowercase for easier comparison
+    std::transform(response.begin(), response.end(), response.begin(), ::tolower);
+    
+    if (response == "y" || response == "yes") {
+        // Write the modified code to the file
+        if (m_sys->writeFile(m_commands.file_path, modified_code)) {
+            std::cout << "\nChanges applied successfully to " << m_commands.file_path << std::endl;
+        } else {
+            std::cerr << "\nError: Failed to write changes to file." << std::endl;
+            return 1;
+        }
+    } else {
+        std::cout << "\nChanges discarded." << std::endl;
+    }
     
     return 0;
 }
@@ -165,17 +186,284 @@ int Core::handleRefactor() {
 }
 
 int Core::handleBuild() {
-    std::cout << "Executing 'build' command (Not yet implemented)." << std::endl;
+    std::cout << "Executing build command..." << std::endl;
+    
+    // Read build command from config
+    std::string build_command = m_config->getStringValue("build_command");
+    
+    if (build_command.empty()) {
+        std::cerr << "Error: 'build_command' not configured in .camus/config.yml" << std::endl;
+        std::cerr << "Please run 'camus init' and edit the configuration file." << std::endl;
+        return 1;
+    }
+    
+    // Parse the build command into executable and arguments
+    std::vector<std::string> command_parts;
+    std::stringstream ss(build_command);
+    std::string part;
+    bool in_quotes = false;
+    std::string current_part;
+    
+    for (char c : build_command) {
+        if (c == '\'' || c == '"') {
+            in_quotes = !in_quotes;
+        } else if (c == ' ' && !in_quotes) {
+            if (!current_part.empty()) {
+                command_parts.push_back(current_part);
+                current_part.clear();
+            }
+        } else {
+            current_part += c;
+        }
+    }
+    if (!current_part.empty()) {
+        command_parts.push_back(current_part);
+    }
+    
+    if (command_parts.empty()) {
+        std::cerr << "Error: Invalid build command format" << std::endl;
+        return 1;
+    }
+    
+    // Extract command and arguments
+    std::string cmd = command_parts[0];
+    std::vector<std::string> args(command_parts.begin() + 1, command_parts.end());
+    
+    // Add any passthrough arguments from the user
+    args.insert(args.end(), m_commands.passthrough_args.begin(), m_commands.passthrough_args.end());
+    
+    std::cout << "Running: " << cmd;
+    for (const auto& arg : args) {
+        std::cout << " " << arg;
+    }
+    std::cout << std::endl;
+    
+    // Execute the build command
+    auto [output, exit_code] = m_sys->executeCommand(cmd, args);
+    
+    // Display the output
+    std::cout << output << std::endl;
+    
+    if (exit_code == 0) {
+        std::cout << "Build completed successfully!" << std::endl;
+    } else {
+        std::cerr << "Build failed with exit code " << exit_code << std::endl;
+        
+        // If build failed, use LLM to analyze the error
+        std::cout << "\nAnalyzing build errors..." << std::endl;
+        
+        std::stringstream prompt_stream;
+        prompt_stream << "The following build command failed. Analyze the error output and suggest a fix. "
+                      << "Be specific about what caused the error and how to fix it.\n\n"
+                      << "Build Command: " << build_command << "\n\n"
+                      << "Error Output:\n"
+                      << output;
+        
+        std::string analysis = m_llm->getCompletion(prompt_stream.str());
+        
+        std::cout << "\n--- Build Error Analysis ---" << std::endl;
+        std::cout << analysis << std::endl;
+        std::cout << "---------------------------" << std::endl;
+        
+        return 1;
+    }
+    
     return 0;
 }
 
 int Core::handleTest() {
-    std::cout << "Executing 'test' command (Not yet implemented)." << std::endl;
+    std::cout << "Executing test command..." << std::endl;
+    
+    // Read test command from config
+    std::string test_command = m_config->getStringValue("test_command");
+    
+    if (test_command.empty()) {
+        std::cerr << "Error: 'test_command' not configured in .camus/config.yml" << std::endl;
+        std::cerr << "Please run 'camus init' and edit the configuration file." << std::endl;
+        return 1;
+    }
+    
+    // Parse the test command into executable and arguments
+    std::vector<std::string> command_parts;
+    std::stringstream ss(test_command);
+    std::string part;
+    bool in_quotes = false;
+    std::string current_part;
+    
+    for (char c : test_command) {
+        if (c == '\'' || c == '"') {
+            in_quotes = !in_quotes;
+        } else if (c == ' ' && !in_quotes) {
+            if (!current_part.empty()) {
+                command_parts.push_back(current_part);
+                current_part.clear();
+            }
+        } else {
+            current_part += c;
+        }
+    }
+    if (!current_part.empty()) {
+        command_parts.push_back(current_part);
+    }
+    
+    if (command_parts.empty()) {
+        std::cerr << "Error: Invalid test command format" << std::endl;
+        return 1;
+    }
+    
+    // Extract command and arguments
+    std::string cmd = command_parts[0];
+    std::vector<std::string> args(command_parts.begin() + 1, command_parts.end());
+    
+    // Add any passthrough arguments from the user
+    args.insert(args.end(), m_commands.passthrough_args.begin(), m_commands.passthrough_args.end());
+    
+    std::cout << "Running: " << cmd;
+    for (const auto& arg : args) {
+        std::cout << " " << arg;
+    }
+    std::cout << std::endl;
+    
+    // Execute the test command
+    auto [output, exit_code] = m_sys->executeCommand(cmd, args);
+    
+    // Display the output
+    std::cout << output << std::endl;
+    
+    if (exit_code == 0) {
+        std::cout << "All tests passed!" << std::endl;
+    } else {
+        std::cerr << "Tests failed with exit code " << exit_code << std::endl;
+        
+        // If tests failed, use LLM to analyze the failure
+        std::cout << "\nAnalyzing test failures..." << std::endl;
+        
+        std::stringstream prompt_stream;
+        prompt_stream << "The following test command failed. Analyze the test output and suggest fixes for the failing tests. "
+                      << "Be specific about what tests failed, why they failed, and how to fix them.\n\n"
+                      << "Test Command: " << test_command << "\n\n"
+                      << "Test Output:\n"
+                      << output;
+        
+        std::string analysis = m_llm->getCompletion(prompt_stream.str());
+        
+        std::cout << "\n--- Test Failure Analysis ---" << std::endl;
+        std::cout << analysis << std::endl;
+        std::cout << "-----------------------------" << std::endl;
+        
+        return 1;
+    }
+    
     return 0;
 }
 
 int Core::handleCommit() {
-    std::cout << "Executing 'commit' command (Not yet implemented)." << std::endl;
+    std::cout << "Checking for staged changes..." << std::endl;
+    
+    // Execute git diff --staged to get the staged changes
+    auto [diff_output, exit_code] = m_sys->executeCommand("git", {"diff", "--staged"});
+    
+    if (exit_code != 0) {
+        std::cerr << "Error: Failed to execute git diff --staged" << std::endl;
+        return 1;
+    }
+    
+    // Check if there are any staged changes
+    if (diff_output.empty()) {
+        std::cout << "No changes staged to commit." << std::endl;
+        return 0;
+    }
+    
+    std::cout << "Found staged changes. Generating commit message..." << std::endl;
+    
+    // Construct prompt for the LLM
+    std::stringstream prompt_stream;
+    prompt_stream << "Generate a concise, conventional commit message for the following code changes. "
+                  << "The message should be descriptive and follow best practices. "
+                  << "Output only the commit message, no explanations or additional text.\n\n"
+                  << "--- Git Diff ---\n"
+                  << diff_output;
+    
+    std::string full_prompt = prompt_stream.str();
+    
+    // Get commit message from LLM
+    std::string commit_message = m_llm->getCompletion(full_prompt);
+    
+    // Remove any leading/trailing whitespace
+    commit_message.erase(0, commit_message.find_first_not_of(" \n\r\t"));
+    commit_message.erase(commit_message.find_last_not_of(" \n\r\t") + 1);
+    
+    // Display the generated commit message
+    std::cout << "\n--- Generated Commit Message ---" << std::endl;
+    std::cout << commit_message << std::endl;
+    std::cout << "-------------------------------\n" << std::endl;
+    
+    // Prompt user for confirmation
+    std::cout << "Use this commit message? [y]es, [e]dit, [n]o: ";
+    std::string response;
+    std::getline(std::cin, response);
+    
+    // Convert response to lowercase
+    std::transform(response.begin(), response.end(), response.begin(), ::tolower);
+    
+    if (response == "y" || response == "yes") {
+        // Execute git commit with the generated message
+        auto [commit_output, commit_exit_code] = m_sys->executeCommand("git", {"commit", "-m", commit_message});
+        
+        if (commit_exit_code == 0) {
+            std::cout << "\nCommit created successfully!" << std::endl;
+            std::cout << commit_output << std::endl;
+        } else {
+            std::cerr << "\nError: Failed to create commit" << std::endl;
+            std::cerr << commit_output << std::endl;
+            return 1;
+        }
+    } else if (response == "e" || response == "edit") {
+        // Allow user to edit the message
+        std::cout << "\nEnter your commit message (press Enter twice to finish):\n";
+        std::string user_message;
+        std::string line;
+        int empty_lines = 0;
+        
+        while (empty_lines < 2) {
+            std::getline(std::cin, line);
+            if (line.empty()) {
+                empty_lines++;
+                if (empty_lines < 2 && !user_message.empty()) {
+                    user_message += "\n";
+                }
+            } else {
+                empty_lines = 0;
+                if (!user_message.empty()) {
+                    user_message += "\n";
+                }
+                user_message += line;
+            }
+        }
+        
+        // Remove trailing newlines
+        while (!user_message.empty() && user_message.back() == '\n') {
+            user_message.pop_back();
+        }
+        
+        if (!user_message.empty()) {
+            auto [commit_output, commit_exit_code] = m_sys->executeCommand("git", {"commit", "-m", user_message});
+            
+            if (commit_exit_code == 0) {
+                std::cout << "\nCommit created successfully!" << std::endl;
+                std::cout << commit_output << std::endl;
+            } else {
+                std::cerr << "\nError: Failed to create commit" << std::endl;
+                std::cerr << commit_output << std::endl;
+                return 1;
+            }
+        } else {
+            std::cout << "\nNo commit message provided. Aborting commit." << std::endl;
+        }
+    } else {
+        std::cout << "\nCommit aborted." << std::endl;
+    }
+    
     return 0;
 }
 
