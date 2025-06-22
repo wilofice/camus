@@ -143,7 +143,7 @@ int Core::handleModify() {
                   << "Your response must contain ONLY the raw, complete source code for the modified file. "
                   << "Do not include any conversational text, explanations, or markdown formatting like ``` or ```language.\n\n"
                   << "<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n"
-                  << "Modify the following code with this request: " << m_commands.prompt << "\n\n"
+                  << " " << m_commands.prompt << "\n\n"
                   << "Original Code:\n"
                   << "```\n"
                   << original_code << "\n"

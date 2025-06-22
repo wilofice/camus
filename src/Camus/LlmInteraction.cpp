@@ -14,25 +14,25 @@
 
 namespace Camus {
 
-// A more robust function to find and extract code between markdown fences.
 static void clean_llm_output(std::string& output) {
-    const std::string fence = "```";
-    size_t start_pos = output.find(fence);
+    output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
 
-    if (start_pos != std::string::npos) {
-        // Find the position of the newline after the opening fence
-        size_t content_start = output.find('\n', start_pos);
-        if (content_start != std::string::npos) {
-            // Find the closing fence, starting the search after the content begins
-            size_t end_pos = output.rfind(fence);
-            if (end_pos != std::string::npos && end_pos > content_start) {
-                // Extract the content between the fences
-                output = output.substr(content_start + 1, end_pos - (content_start + 1));
-            }
+    output.erase(std::find_if(output.rbegin(), output.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), output.end());
+
+    if (output.size() > 3 && output.substr(0, 3) == "```") {
+        size_t first_newline = output.find('\n');
+        if (first_newline != std::string::npos) {
+            output = output.substr(first_newline + 1);
         }
     }
+    if (output.size() > 3 && output.substr(output.size() - 3) == "```") {
+        output = output.substr(0, output.size() - 3);
+    }
 
-    // Final trim of any remaining whitespace
     output.erase(output.begin(), std::find_if(output.begin(), output.end(), [](unsigned char ch) {
         return !std::isspace(ch);
     }));
@@ -46,6 +46,11 @@ LlmInteraction::LlmInteraction(const std::string& model_path) {
     llama_backend_init();
 
     auto mparams = llama_model_default_params();
+
+    // --- GPU OFFLOAD SETTING ---
+    // Set n_gpu_layers to a high number to offload as many layers as possible to the GPU.
+    mparams.n_gpu_layers = 99;
+
     auto cparams = llama_context_default_params();
     cparams.n_ctx = 4096;
     cparams.n_threads = std::thread::hardware_concurrency();
@@ -103,7 +108,7 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
     last_n_tokens.reserve(llama_n_ctx(m_context));
     last_n_tokens.insert(last_n_tokens.end(), tokens_list.begin(), tokens_list.end());
 
-    const llama_token eot_token = 128009;
+    const llama_token eot_token = llama_token_eot(m_model);
 
     while (n_generated < max_new_tokens) {
         auto current_time = std::chrono::steady_clock::now();
@@ -136,6 +141,7 @@ std::string LlmInteraction::getCompletion(const std::string& prompt) {
         }
 
         char piece[8] = {0};
+        // Corrected the function call to include the 'special' boolean argument.
         llama_token_to_piece(m_model, new_token_id, piece, sizeof(piece), false);
         result += piece;
         std::cout << piece << std::flush;
