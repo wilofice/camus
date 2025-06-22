@@ -1,0 +1,75 @@
+Camus - Ollama Integration Plan
+1. Objective
+To add a new backend mode to Camus that allows it to communicate with a running Ollama server via its REST API. This will be an alternative to the direct, in-process llama.cpp integration, providing users with flexibility and access to Ollama's managed model environment.
+
+2. Key Architectural Changes
+This integration will be designed to be a clean, switchable backend, preserving all existing llama.cpp functionality.
+
+Backend Selection via config.yml:
+
+We will introduce a new top-level setting in .camus/config.yml to select the backend.
+
+Input: backend: direct (for the existing llama.cpp integration) or backend: ollama.
+
+Input: A new ollama_url setting (e.g., http://localhost:11434).
+
+New Dependencies (via CMake FetchContent):
+
+HTTP Client: A C++ library is required to make REST API calls. We will use yhirose/cpp-httplib, a popular, cross-platform, header-only library that is easy to integrate.
+
+JSON Parser: Ollama's API communicates using JSON. We will use nlohmann/json, the de-facto standard for modern C++ JSON manipulation, which is also header-only.
+
+Refactoring LlmInteraction into an Interface:
+
+The current LlmInteraction class is tightly coupled to llama.cpp. We will refactor it into an abstract base class (an interface) with a pure virtual getCompletion method.
+
+Output: include/Camus/LlmInteraction.hpp will define the interface:
+
+class LlmInteraction {
+public:
+    virtual ~LlmInteraction() = default;
+    virtual std::string getCompletion(const std::string& prompt) = 0;
+};
+
+Output: The existing code will be moved into a new LlamaCppInteraction class that inherits from LlmInteraction.
+
+Output: We will create a new OllamaInteraction class that also inherits from LlmInteraction.
+
+Core Class as a Factory:
+
+The Core class constructor will become a "factory." It will read the backend setting from the config file.
+
+Based on the setting, it will instantiate and hold a std::unique_ptr to the correct concrete class (LlamaCppInteraction or OllamaInteraction).
+
+3. Component Implementation Details
+OllamaInteraction.cpp Logic:
+
+Description: This new class will handle all communication with the Ollama server.
+
+Constructor Input: The Ollama server URL (e.g., http://localhost:11434).
+
+getCompletion Method Logic:
+
+Input: The prompt string.
+
+It will use the nlohmann/json library to construct a JSON object for the request body. This object will contain the model name (read from config.yml), the full prompt, and "stream": false.
+
+It will create an httplib::Client instance pointing to the Ollama server URL.
+
+It will make a POST request to the /api/generate endpoint, sending the serialized JSON object as the request body.
+
+It will receive the HTTP response. If the response code is not 200 OK, it will throw an exception.
+
+It will parse the JSON response body using nlohmann/json.
+
+It will extract the content of the response field from the JSON.
+
+Output: The extracted string containing the model's response.
+
+CMakeLists.txt Updates:
+
+New FetchContent_Declare blocks will be added for yhirose/cpp-httplib and nlohmann/json.
+
+The include paths for these new libraries will be added to our camus target.
+
+This plan provides a clear path to adding Ollama support as a robust, alternative backend without disrupting our existing work on the direct llama.cpp integration.

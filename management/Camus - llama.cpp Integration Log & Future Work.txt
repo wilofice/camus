@@ -1,0 +1,82 @@
+Camus - llama.cpp Integration Log & Future Work
+1. Development & Troubleshooting Log
+This document chronicles the technical challenges, errors, and their corresponding solutions encountered during the direct integration of llama.cpp into the Camus CLI.
+
+Issue #1: API Mismatch & Version Instability
+
+Symptom: Initial compilation failed with numerous "deprecated function" and "no matching function" errors.
+
+Root Cause: Using the master branch of llama.cpp created a moving target. Our C++ code was written for one version of the API, but FetchContent would pull a newer version with breaking changes.
+
+Solution: We pinned the dependency to a specific, stable GIT_TAG in CMakeLists.txt. This synchronized our code with the library version, resolving the compilation errors.
+
+Issue #2: C++ unique_ptr & Incomplete Type Errors
+
+Symptom: Compilation failed with invalid application of 'sizeof' to an incomplete type.
+
+Root Cause: The Core.hpp header used forward declarations for classes managed by std::unique_ptr. The compiler could not generate the default destructor for Core without seeing the full definitions of these classes.
+
+Solution: The standard C++ PIMPL idiom solution was applied: Core's destructor was declared in the header and defined in the .cpp file, ensuring the compiler had the necessary type information.
+
+Issue #3: Dependency Management (Multiple Incidents)
+
+Symptom: CMake configuration failed with errors like fatal: repository '...' not found or fatal: invalid reference: '...'.
+
+Root Cause: Incorrect repository URLs or non-existent git tags were used in FetchContent.
+
+Solution: In each case, the fix required verifying the correct URL and a valid release tag on the dependency's GitHub page. This reinforced the need for careful dependency management.
+
+Issue #4: Platform-Specific Runtime Errors (macOS Metal)
+
+Symptom: The application built successfully but failed at runtime on macOS, unable to find the default.metallib shader library.
+
+Root Cause: The Metal backend requires this file at runtime. Our executable did not know where to find it inside the complex build directory.
+
+Solution: A post-build command was added to CMakeLists.txt to explicitly copy the default.metallib file next to our camus executable, ensuring it's always found at runtime.
+
+Issue #5: Repetitive & Garbled Model Output
+
+Symptom: Models would get stuck in repetitive loops or produce nonsensical, garbled text.
+
+Root Cause: This was traced to three distinct problems:
+
+Poor Sampling: Initially using llama_sample_token_greedy led to simple loops.
+
+Incorrect Prompting: Not using the model-specific chat template (e.g., for Llama 3 or DeepSeek) confused the instruct-tuned models.
+
+Corrupt Model Files: The most critical issue was a GENERATION QUALITY WILL BE DEGRADED! warning from llama.cpp, indicating the GGUF file's tokenizer data was corrupt.
+
+Solution: A multi-part solution was implemented:
+
+The sampling logic was upgraded to a full pipeline with repetition penalties and other samplers (top_k, top_p, temp).
+
+The Core.cpp was updated to construct prompts using the precise chat template for the target model.
+
+The final, and most important, solution was to identify the root cause as a bad model file and switch to a known-good GGUF conversion, which eliminated the tokenizer warning and dramatically improved quality.
+
+2. Path to a Robust llama.cpp Implementation (Future Work)
+The current direct integration works, but as we've discovered, it is fragile. To achieve the quality and flexibility of a service like Ollama, the following improvements are necessary. This work is currently on hold.
+
+Task 1: Implement Model-Specific Configuration.
+
+Description: Evolve the .camus/config.yml to support per-model settings. This would allow users to define different prompt templates, sampling parameters (temperature, top_k, etc.), and stop tokens for each model they use.
+
+Action: Enhance the ConfigParser to handle this more complex structure.
+
+Task 2: Dynamic Parameter & Prompt Loading.
+
+Description: Refactor Core and LlmInteraction to dynamically use the parameters loaded from the config file for the selected model, instead of having them hardcoded in the C++ source.
+
+Action: Pass the model-specific configuration struct to LlmInteraction.
+
+Task 3: Research GGUF Metadata.
+
+Description: GGUF files contain a wealth of metadata, including, in some cases, the recommended prompt template. A robust implementation should attempt to programmatically read this metadata.
+
+Action: Investigate the llama.cpp API for functions that can extract key-value metadata from a loaded model. This could allow Camus to auto-detect the correct prompt template, reducing the need for manual configuration and making the tool far more user-friendly.
+
+Task 4: Plan for llama.cpp Dependency Upgrades.
+
+Description: The llama.cpp library evolves rapidly. We should establish a process for periodically upgrading our pinned version to take advantage of performance improvements and new features.
+
+Action: Schedule a recurring task to create a new development branch, update the GIT_TAG in CMakeLists.txt, fix any resulting API breakages, test thoroughly, and merge.
