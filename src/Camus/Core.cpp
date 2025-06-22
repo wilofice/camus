@@ -94,8 +94,17 @@ int Core::handleInit() {
     std::cout << "Initializing Camus configuration..." << std::endl;
     
     const std::string defaultConfig = R"(# Camus Configuration v1.0
+# Backend configuration: 'direct' for llama.cpp or 'ollama' for Ollama server
+backend: direct
+
+# Direct backend settings (when backend: direct)
 model_path: /path/to/your/models/
 default_model: Llama-3-8B-Instruct.Q4_K_M.gguf
+
+# Ollama backend settings (when backend: ollama)
+ollama_url: http://localhost:11434
+
+# Build and test commands
 build_command: 'cmake --build ./build'
 test_command: 'ctest --test-dir ./build'
 )";

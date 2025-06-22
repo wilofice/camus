@@ -38,6 +38,22 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(diff_lib)
 
+# 4. cpp-httplib for HTTP client functionality
+FetchContent_Declare(
+  cpp_httplib
+  GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+  GIT_TAG v0.14.3
+)
+FetchContent_MakeAvailable(cpp_httplib)
+
+# 5. nlohmann/json for JSON parsing
+FetchContent_Declare(
+  nlohmann_json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 
 # --- Project Structure ---------------------------------------------
 file(GLOB_RECURSE CAMUS_SOURCES "src/*.cpp")
@@ -53,6 +69,12 @@ target_include_directories(camus PUBLIC include)
 
 # The dtl library's headers are in its 'dtl' subdirectory.
 target_include_directories(camus PRIVATE ${diff_lib_SOURCE_DIR})
+
+# cpp-httplib headers
+target_include_directories(camus PRIVATE ${cpp_httplib_SOURCE_DIR})
+
+# nlohmann/json headers
+target_include_directories(camus PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include)
 
 # --- Linker Settings -----------------------------------------------
 target_link_libraries(camus PRIVATE CLI11::CLI11 llama)
