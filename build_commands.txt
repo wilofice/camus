@@ -1,0 +1,31 @@
+  To build the Camus executable, you need to run these commands:
+
+  First time setup:
+
+  # Create build directory and configure CMake
+  mkdir build
+  cmake -B build
+
+  Building the executable:
+
+  # Build the project
+  cmake --build build
+
+  The executable location:
+
+  The executable will be at: build/camus
+
+  Clean rebuild (if needed):
+
+  # Remove build directory and start fresh
+  rm -rf build
+  mkdir build
+  cmake -B build
+  cmake --build build
+
+  Quick rebuild after code changes:
+
+  # Just run the build command - CMake will detect changes
+  cmake --build build
+
+  That's it! The cmake --build build command is all you need to run each time you make changes to the source code.

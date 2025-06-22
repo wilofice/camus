@@ -14,21 +14,43 @@ namespace Camus {
 
 // Helper function to trim markdown code fences from the final output
 static void clean_llm_output(std::string& output) {
+    const std::string fence = "```";
+    size_t first_fence_pos = output.find(fence);
+    size_t last_fence_pos = output.rfind(fence);
+
+    if (first_fence_pos != std::string::npos && last_fence_pos != std::string::npos && last_fence_pos > first_fence_pos) {
+        // --- Logging Logic ---
+        std::string header = output.substr(0, first_fence_pos);
+        std::string footer = output.substr(last_fence_pos + fence.length());
+
+        if (!header.empty() || !footer.empty()) {
+            std::ofstream log_file(".camus/reasoning.log", std::ios_base::app);
+            if (log_file.is_open()) {
+                auto now = std::chrono::system_clock::now();
+                auto in_time_t = std::chrono::system_clock::to_time_t(now);
+                log_file << "--- Log Entry: " << std::ctime(&in_time_t);
+                if (!header.empty()) {
+                    log_file << "Header (Pre-Code):" << std::endl << header << std::endl;
+                }
+                if (!footer.empty()) {
+                    log_file << "Footer (Post-Code):" << std::endl << footer << std::endl;
+                }
+                log_file << "--- End of Entry ---" << std::endl << std::endl;
+            }
+        }
+
+        // --- Code Extraction Logic ---
+        size_t content_start_pos = output.find('\n', first_fence_pos);
+        if (content_start_pos != std::string::npos) {
+            output = output.substr(content_start_pos + 1, last_fence_pos - (content_start_pos + 1));
+        }
+    }
+
+    // Final trim of any remaining whitespace
     auto trim_whitespace = [](std::string& s) {
         s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
         s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
     };
-
-    trim_whitespace(output);
-    if (output.size() > 3 && output.substr(0, 3) == "```") {
-        size_t first_newline = output.find('\n');
-        if (first_newline != std::string::npos) {
-            output = output.substr(first_newline + 1);
-        }
-    }
-    if (output.size() > 3 && output.substr(output.size() - 3) == "```") {
-        output = output.substr(0, output.size() - 3);
-    }
     trim_whitespace(output);
 }
 
@@ -50,10 +72,10 @@ std::string OllamaInteraction::getCompletion(const std::string& prompt) {
         nlohmann::json request_body = {
             {"model", m_model_name},
             {"prompt", prompt},
-            {"stream", true} // Enable streaming
+            {"stream", false} // Enable streaming
         };
 
-        std::cout << "[INFO] Sending request to Ollama server (streaming mode)..." << std::endl;
+        std::cout << "[INFO] Sending request to Ollama server (streaming mode off)..." << std::endl;
 
         // Since httplib's streaming POST is complex, we'll use a custom approach
         // First, let's use the simple POST API and process the streaming response manually
