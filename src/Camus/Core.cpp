@@ -15,6 +15,9 @@
 #include "Camus/MultiFileDiff.hpp"
 #include "Camus/InteractiveConfirmation.hpp"
 #include "Camus/BackupManager.hpp"
+#include "Camus/AmodifyConfig.hpp"
+#include "Camus/SafetyChecker.hpp"
+#include "Camus/Logger.hpp"
 #include "dtl/dtl.hpp" // Include the new diff library header
 #include <iostream>
 #include <stdexcept>
@@ -22,6 +25,7 @@
 #include <vector>
 #include <algorithm>
 #include <filesystem>
+#include <chrono>
 
 namespace Camus {
 
@@ -143,6 +147,30 @@ ollama_url: http://localhost:11434
 # Build and test commands
 build_command: 'cmake --build ./build'
 test_command: 'ctest --test-dir ./build'
+
+# Project scanning settings for 'amodify' command
+amodify:
+  max_files: 100
+  max_tokens: 128000
+  include_extensions:
+    - '.cpp'
+    - '.hpp'
+    - '.h'
+    - '.c'
+    - '.py'
+    - '.js'
+    - '.ts'
+  default_ignore_patterns:
+    - '.git/'
+    - 'build/'
+    - 'node_modules/'
+    - '__pycache__/'
+    - '*.o'
+    - '*.pyc'
+  create_backups: true
+  backup_dir: '.camus/backups'
+  interactive_threshold: 5  # Use interactive mode for >5 files
+  git_check: true          # Check for clean git working directory
 )";
 
     const std::string configDir = ".camus";
@@ -251,43 +279,78 @@ int Core::handleModify() {
 }
 
 int Core::handleAmodify() {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    // Initialize logging
+    Logger& logger = Logger::getInstance();
+    logger.initialize();
+    logger.logSessionStart("amodify", m_commands.prompt);
+    
     std::cout << "Starting project-wide modification..." << std::endl;
     std::cout << "Request: " << m_commands.prompt << std::endl << std::endl;
+    
+    // Load configuration
+    AmodifyConfig amod_config;
+    amod_config.loadFromConfig(*m_config);
+    amod_config.applyCommandOverrides(m_commands);
+    
+    if (!amod_config.validate()) {
+        std::cerr << "[ERROR] Invalid amodify configuration" << std::endl;
+        return 1;
+    }
     
     // Step 1: Scan project files
     std::cout << "[1/6] Scanning project files..." << std::endl;
     ProjectScanner scanner(".");
     
-    // Apply include/exclude patterns if provided
+    // Apply configured extensions and patterns
+    auto extensions = amod_config.getMergedExtensions();
+    for (const auto& ext : extensions) {
+        scanner.addIncludeExtension(ext);
+    }
+    
+    auto ignore_patterns = amod_config.getMergedIgnorePatterns();
+    for (const auto& pattern : ignore_patterns) {
+        scanner.addIgnorePattern(pattern);
+    }
+    
+    // Apply command-line include/exclude patterns if provided
     if (!m_commands.include_pattern.empty()) {
-        // For now, we'll use simple pattern matching
-        // In a full implementation, this would parse glob patterns
         scanner.addIncludeExtension(m_commands.include_pattern);
     }
     if (!m_commands.exclude_pattern.empty()) {
         scanner.addIgnorePattern(m_commands.exclude_pattern);
     }
     
-    // Set max file limit
+    // Set max file limit from config
     scanner.setMaxFileSize(100 * 1024); // 100KB per file limit
     
     auto discovered_files = scanner.scanFiles();
     
+    // Log file discovery
+    std::vector<std::string> all_discovered; // In a full implementation, scanner would provide this
+    logger.logFileDiscovery(all_discovered, discovered_files);
+    
     if (discovered_files.empty()) {
         std::cerr << "No relevant files found in the project." << std::endl;
+        logger.error("ProjectScanner", "No relevant files found in project");
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        logger.logSessionEnd("amodify", 1, duration.count());
         return 1;
     }
     
     // Limit files if needed
-    if (discovered_files.size() > m_commands.max_files) {
+    if (discovered_files.size() > amod_config.max_files) {
         std::cout << "[WARN] Found " << discovered_files.size() 
-                  << " files, limiting to " << m_commands.max_files << std::endl;
-        discovered_files.resize(m_commands.max_files);
+                  << " files, limiting to " << amod_config.max_files << std::endl;
+        discovered_files.resize(amod_config.max_files);
     }
     
     // Step 2: Build context
     std::cout << "[2/6] Building context from " << discovered_files.size() << " files..." << std::endl;
-    ContextBuilder context_builder(m_commands.max_tokens);
+    ContextBuilder context_builder(amod_config.max_tokens);
     
     // Extract keywords from the user request for relevance scoring
     std::vector<std::string> keywords;
@@ -306,6 +369,10 @@ int Core::handleAmodify() {
     std::cout << "Context built with " << build_stats["files_included"] 
               << " files (~" << build_stats["tokens_used"] << " tokens)" << std::endl;
     
+    // Log context building
+    logger.logContextBuilding(discovered_files.size(), build_stats["files_included"],
+                             build_stats["tokens_used"], build_stats["files_truncated"]);
+    
     if (build_stats["files_truncated"] > 0) {
         std::cout << "[WARN] " << build_stats["files_truncated"] 
                   << " files were truncated to fit token limit" << std::endl;
@@ -314,10 +381,27 @@ int Core::handleAmodify() {
     // Step 3: Send to LLM
     std::cout << "[3/6] Sending request to LLM... (this may take a while)" << std::endl;
     std::string llm_response;
+    auto llm_start = std::chrono::steady_clock::now();
     try {
         llm_response = m_llm->getCompletion(context);
+        auto llm_end = std::chrono::steady_clock::now();
+        auto llm_duration = std::chrono::duration_cast<std::chrono::milliseconds>(llm_end - llm_start);
+        
+        // Log LLM interaction
+        logger.logLlmInteraction(build_stats["tokens_used"], llm_response.size(),
+                                llm_duration.count(), true);
     } catch (const std::exception& e) {
+        auto llm_end = std::chrono::steady_clock::now();
+        auto llm_duration = std::chrono::duration_cast<std::chrono::milliseconds>(llm_end - llm_start);
+        
+        logger.logLlmInteraction(build_stats["tokens_used"], 0, llm_duration.count(), false);
+        logger.error("LLM", "Request failed", e.what());
+        
         std::cerr << "\n[ERROR] LLM request failed: " << e.what() << std::endl;
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        logger.logSessionEnd("amodify", 1, duration.count());
         return 1;
     }
     
@@ -342,27 +426,75 @@ int Core::handleAmodify() {
     
     std::cout << "Parsed " << modifications.size() << " file modifications" << std::endl;
     
-    // Step 5: Create backups
-    std::cout << "[5/6] Creating backups..." << std::endl;
-    BackupManager backup_manager;
+    // Step 5: Safety checks
+    std::cout << "[5/7] Performing safety checks..." << std::endl;
+    SafetyChecker safety_checker(".");
+    auto safety_report = safety_checker.performSafetyChecks(modifications, amod_config);
     
-    std::vector<std::string> files_to_backup;
-    for (const auto& mod : modifications) {
-        if (!mod.is_new_file) {
-            files_to_backup.push_back(mod.file_path);
+    // Log safety checks
+    logger.logSafetyChecks(safety_report);
+    
+    // Display safety report
+    std::cout << "\n--- Safety Report ---" << std::endl;
+    for (const auto& check : safety_report.checks) {
+        std::string color = SafetyChecker::getSafetyLevelColor(check.level);
+        std::string level_desc = SafetyChecker::getSafetyLevelDescription(check.level);
+        
+        std::cout << color << "[" << level_desc << "] " << check.check_name 
+                  << ": " << check.message << "\033[0m" << std::endl;
+        
+        if (!check.recommendation.empty() && check.level != SafetyLevel::SAFE) {
+            std::cout << "  → " << check.recommendation << std::endl;
         }
     }
     
-    size_t backups_created = backup_manager.createBackups(files_to_backup);
-    if (backups_created < files_to_backup.size()) {
-        std::cerr << "[WARN] Could not create all backups. Proceed with caution." << std::endl;
+    std::cout << "\nOverall Safety: " 
+              << SafetyChecker::getSafetyLevelColor(safety_report.overall_level)
+              << SafetyChecker::getSafetyLevelDescription(safety_report.overall_level)
+              << "\033[0m" << std::endl;
+    
+    if (!safety_report.can_proceed) {
+        std::cout << "\n[BLOCKED] Critical safety issues prevent modification." << std::endl;
+        std::cout << "Please address the issues above and try again." << std::endl;
+        return 1;
     }
     
-    // Step 6: Show diffs and get confirmation
-    std::cout << "[6/6] Review proposed changes..." << std::endl << std::endl;
+    if (safety_report.overall_level == SafetyLevel::DANGER) {
+        std::cout << "\n[CAUTION] Danger level detected. Proceed with caution." << std::endl;
+        std::cout << "Continue anyway? [y/n]: ";
+        std::string response;
+        std::getline(std::cin, response);
+        if (response != "y" && response != "yes") {
+            std::cout << "Operation cancelled by user." << std::endl;
+            return 0;
+        }
+    }
+    
+    // Step 6: Create backups (if enabled)
+    BackupManager backup_manager(amod_config.backup_dir);
+    if (amod_config.create_backups) {
+        std::cout << "[6/7] Creating backups..." << std::endl;
+        
+        std::vector<std::string> files_to_backup;
+        for (const auto& mod : modifications) {
+            if (!mod.is_new_file) {
+                files_to_backup.push_back(mod.file_path);
+            }
+        }
+        
+        size_t backups_created = backup_manager.createBackups(files_to_backup);
+        if (backups_created < files_to_backup.size()) {
+            std::cerr << "[WARN] Could not create all backups. Proceed with caution." << std::endl;
+        }
+    } else {
+        std::cout << "[6/7] Skipping backups (disabled in config)..." << std::endl;
+    }
+    
+    // Step 7: Show diffs and get confirmation
+    std::cout << "[7/7] Review proposed changes..." << std::endl << std::endl;
     
     // Check if we should use interactive mode
-    bool use_interactive = modifications.size() > 5; // Use interactive for many files
+    bool use_interactive = modifications.size() > amod_config.interactive_threshold;
     
     if (use_interactive) {
         InteractiveConfirmation interactive;
@@ -427,15 +559,30 @@ int Core::handleAmodify() {
     std::cout << "\nSuccessfully applied " << applied << " of " 
               << modifications.size() << " modifications." << std::endl;
     
+    // Log file modifications
+    logger.logFileModifications(modifications, applied, modifications.size() - applied);
+    
+    int exit_code = (applied == modifications.size()) ? 0 : 1;
+    
     if (applied < modifications.size()) {
-        std::cout << "\n[WARN] Some modifications failed. You can restore from backup if needed." << std::endl;
-        std::cout << "Backup location: .camus/backups/" << std::endl;
+        if (amod_config.create_backups) {
+            std::cout << "\n[WARN] Some modifications failed. You can restore from backup if needed." << std::endl;
+            std::cout << "Backup location: " << amod_config.backup_dir << "/" << std::endl;
+        }
     } else {
-        // Clean up backups on success
-        backup_manager.cleanupBackups();
+        // Clean up backups on success (if backups were created)
+        if (amod_config.create_backups) {
+            backup_manager.cleanupBackups();
+        }
     }
     
-    return (applied == modifications.size()) ? 0 : 1;
+    // Log session end
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    logger.logSessionEnd("amodify", exit_code, duration.count());
+    logger.flush();
+    
+    return exit_code;
 }
 
 int Core::handleRefactor() {
