@@ -6,6 +6,7 @@
 #include "Camus/Core.hpp"
 #include "Camus/ConfigParser.hpp"
 #include "Camus/LlmInteraction.hpp"
+#include "Camus/LlamaCppInteraction.hpp"
 #include "Camus/SysInteraction.hpp"
 #include "dtl/dtl.hpp" // Include the new diff library header
 #include <iostream>
@@ -50,7 +51,7 @@ Core::Core(const Commands& commands)
         std::string full_model_path = model_dir + model_name;
         
         try {
-           m_llm = std::make_unique<LlmInteraction>(full_model_path);
+           m_llm = std::make_unique<LlamaCppInteraction>(full_model_path);
         } catch (const std::exception& e) {
             std::cerr << "[FATAL] Failed to initialize LLM with model: " << full_model_path << "\n"
                       << "Please check the path in .camus/config.yml and ensure the model exists.\n"
