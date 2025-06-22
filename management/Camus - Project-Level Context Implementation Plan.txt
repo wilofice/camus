@@ -1,0 +1,104 @@
+Camus - Project-Level Context Implementation Plan
+1. Objective
+To implement a new, advanced mode where Camus can read all relevant files in the current directory structure, allowing the user to make high-level requests (e.g., "add a new API endpoint") and have the LLM determine which files to modify and how.
+
+2. High-Level Strategy
+This is a significant feature that requires careful context management. We will create a new command, camus amodify (for "auto modify"), to house this functionality. The process will involve discovering files, building a large context prompt, and parsing a complex response from the LLM.
+
+Task 1: File Discovery & Filtering
+Objective: To recursively find all relevant source files in the current directory while ignoring irrelevant files and binaries.
+
+New Component: A ProjectScanner class (ProjectScanner.hpp, ProjectScanner.cpp).
+
+Input: The root directory path to scan.
+
+Output: A std::vector<std::string> containing the relative paths of all relevant files.
+
+Implementation Guidelines:
+
+The ProjectScanner will use C++'s <filesystem> library to recursively walk the directory structure.
+
+It will implement logic to read a .camusignore file from the project root. This file will have a syntax identical to .gitignore.
+
+For each file or directory encountered, it will check against the .camusignore rules. It will also have a default list of patterns to ignore (e.g., .git, build/, .o, .a, .so, .dll).
+
+It will also have a default list of file extensions to include (e.g., .cpp, .hpp, .h, .c, .py, .js, .ts, .md), only adding files with these extensions to the final list.
+
+Task 2: Context Prompt Construction
+Objective: To assemble the contents of all discovered files into a single, large prompt that the LLM can understand.
+
+File to Modify: src/Camus/Core.cpp (a new handleAmodify method).
+
+Input: The vector of file paths from the ProjectScanner.
+
+Output: A single, large std::string to be sent to the LLM.
+
+Implementation Guidelines:
+
+The handleAmodify method will iterate through the list of file paths.
+
+It will read the content of each file.
+
+It will construct the prompt by concatenating the files, using clear markers to separate them. This is crucial for the model to understand the project structure.
+
+<|begin_of_text|>...
+...system prompt...
+<|eot_id|>...
+...user prompt: "Implement the feature: [user request]"...
+
+Here is the full project context:
+
+--- FILE: src/main.cpp ---
+[content of main.cpp]
+
+--- FILE: include/Camus/Core.hpp ---
+[content of Core.hpp]
+
+--- END OF PROJECT CONTEXT ---
+<|eot_id|>...
+
+Task 3: LLM Interaction & Output Parsing
+Objective: To instruct the LLM to act as an autonomous agent and to parse its structured response.
+
+Files to Modify: src/Camus/Core.cpp and a new ResponseParser class.
+
+Input: The large context prompt.
+
+Output: A structured representation of the files to be modified (e.g., std::map<std::string, std::string>).
+
+Implementation Guidelines:
+
+Prompt Engineering: The system prompt for amodify must be very specific. It needs to instruct the model to:
+
+Analyze the entire project context.
+
+Determine which file(s) need to be changed.
+
+Respond with a specific format, repeating the --- FILE: [path] --- marker for each file it wants to modify, followed by the complete new content for that file.
+
+LLM Call: Send the prompt to the LLM. The context window (n_ctx) of the model will be a limiting factor here.
+
+Response Parser: Create a new ResponseParser class that takes the raw string from the LLM. It will be responsible for parsing this string, looking for the --- FILE: ... --- markers, and extracting the file paths and their corresponding new code blocks into a map or similar data structure.
+
+Task 4: Multi-File Diff and Confirmation
+Objective: To show the user all proposed changes across all affected files and get a single confirmation before applying anything.
+
+File to Modify: src/Camus/Core.cpp (handleAmodify).
+
+Input: The map of filenames to new content from the ResponseParser.
+
+Output (to console): A series of color-coded diffs, one for each modified file.
+
+Implementation Guidelines:
+
+Loop through the parsed results from the ResponseParser.
+
+For each file, read its original content from disk.
+
+Use the dtl diff library to generate a diff between the original and the new content.
+
+Print a header (--- Changes for src/main.cpp ---) followed by the color-coded diff.
+
+After displaying all diffs, ask for a single, final confirmation: Apply changes to these X files? [y/n]: .
+
+If 'y', loop through the parsed results again and write each new code block to its corresponding file on disk.

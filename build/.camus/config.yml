@@ -1,6 +1,6 @@
 # Camus Configuration v1.0
 # Backend configuration: 'direct' for llama.cpp or 'ollama' for Ollama server
-backend: ollama
+backend: direct
 
 # Direct backend settings (when backend: direct)
 model_path: /path/to/your/models/
