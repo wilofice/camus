@@ -9,12 +9,19 @@
 #include "Camus/LlamaCppInteraction.hpp"
 #include "Camus/OllamaInteraction.hpp"
 #include "Camus/SysInteraction.hpp"
+#include "Camus/ProjectScanner.hpp"
+#include "Camus/ContextBuilder.hpp"
+#include "Camus/ResponseParser.hpp"
+#include "Camus/MultiFileDiff.hpp"
+#include "Camus/InteractiveConfirmation.hpp"
+#include "Camus/BackupManager.hpp"
 #include "dtl/dtl.hpp" // Include the new diff library header
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
 
 namespace Camus {
 
@@ -99,6 +106,8 @@ int Core::run() {
         return handleInit();
     } else if (m_commands.active_command == "modify") {
         return handleModify();
+    } else if (m_commands.active_command == "amodify") {
+        return handleAmodify();
     } else if (m_commands.active_command == "refactor") {
         return handleRefactor();
     } else if (m_commands.active_command == "build") {
@@ -239,6 +248,194 @@ int Core::handleModify() {
     }
     
     return 0;
+}
+
+int Core::handleAmodify() {
+    std::cout << "Starting project-wide modification..." << std::endl;
+    std::cout << "Request: " << m_commands.prompt << std::endl << std::endl;
+    
+    // Step 1: Scan project files
+    std::cout << "[1/6] Scanning project files..." << std::endl;
+    ProjectScanner scanner(".");
+    
+    // Apply include/exclude patterns if provided
+    if (!m_commands.include_pattern.empty()) {
+        // For now, we'll use simple pattern matching
+        // In a full implementation, this would parse glob patterns
+        scanner.addIncludeExtension(m_commands.include_pattern);
+    }
+    if (!m_commands.exclude_pattern.empty()) {
+        scanner.addIgnorePattern(m_commands.exclude_pattern);
+    }
+    
+    // Set max file limit
+    scanner.setMaxFileSize(100 * 1024); // 100KB per file limit
+    
+    auto discovered_files = scanner.scanFiles();
+    
+    if (discovered_files.empty()) {
+        std::cerr << "No relevant files found in the project." << std::endl;
+        return 1;
+    }
+    
+    // Limit files if needed
+    if (discovered_files.size() > m_commands.max_files) {
+        std::cout << "[WARN] Found " << discovered_files.size() 
+                  << " files, limiting to " << m_commands.max_files << std::endl;
+        discovered_files.resize(m_commands.max_files);
+    }
+    
+    // Step 2: Build context
+    std::cout << "[2/6] Building context from " << discovered_files.size() << " files..." << std::endl;
+    ContextBuilder context_builder(m_commands.max_tokens);
+    
+    // Extract keywords from the user request for relevance scoring
+    std::vector<std::string> keywords;
+    std::istringstream iss(m_commands.prompt);
+    std::string word;
+    while (iss >> word) {
+        if (word.length() > 3) { // Only consider words longer than 3 chars
+            keywords.push_back(word);
+        }
+    }
+    context_builder.setRelevanceKeywords(keywords);
+    
+    std::string context = context_builder.buildContext(discovered_files, m_commands.prompt);
+    
+    auto build_stats = context_builder.getLastBuildStats();
+    std::cout << "Context built with " << build_stats["files_included"] 
+              << " files (~" << build_stats["tokens_used"] << " tokens)" << std::endl;
+    
+    if (build_stats["files_truncated"] > 0) {
+        std::cout << "[WARN] " << build_stats["files_truncated"] 
+                  << " files were truncated to fit token limit" << std::endl;
+    }
+    
+    // Step 3: Send to LLM
+    std::cout << "[3/6] Sending request to LLM... (this may take a while)" << std::endl;
+    std::string llm_response;
+    try {
+        llm_response = m_llm->getCompletion(context);
+    } catch (const std::exception& e) {
+        std::cerr << "\n[ERROR] LLM request failed: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    // Step 4: Parse response
+    std::cout << "[4/6] Parsing LLM response..." << std::endl;
+    ResponseParser parser(".");
+    parser.setStrictValidation(true);
+    
+    auto modifications = parser.parseResponse(llm_response);
+    auto parse_stats = parser.getLastParseStats();
+    
+    if (modifications.empty()) {
+        std::cerr << "[ERROR] No valid file modifications found in LLM response." << std::endl;
+        if (!parse_stats.error_messages.empty()) {
+            std::cerr << "Parsing errors:" << std::endl;
+            for (const auto& error : parse_stats.error_messages) {
+                std::cerr << "  - " << error << std::endl;
+            }
+        }
+        return 1;
+    }
+    
+    std::cout << "Parsed " << modifications.size() << " file modifications" << std::endl;
+    
+    // Step 5: Create backups
+    std::cout << "[5/6] Creating backups..." << std::endl;
+    BackupManager backup_manager;
+    
+    std::vector<std::string> files_to_backup;
+    for (const auto& mod : modifications) {
+        if (!mod.is_new_file) {
+            files_to_backup.push_back(mod.file_path);
+        }
+    }
+    
+    size_t backups_created = backup_manager.createBackups(files_to_backup);
+    if (backups_created < files_to_backup.size()) {
+        std::cerr << "[WARN] Could not create all backups. Proceed with caution." << std::endl;
+    }
+    
+    // Step 6: Show diffs and get confirmation
+    std::cout << "[6/6] Review proposed changes..." << std::endl << std::endl;
+    
+    // Check if we should use interactive mode
+    bool use_interactive = modifications.size() > 5; // Use interactive for many files
+    
+    if (use_interactive) {
+        InteractiveConfirmation interactive;
+        InteractiveOptions options;
+        options.show_preview = true;
+        options.auto_backup = false; // We already created backups
+        
+        auto result = interactive.runInteractiveSession(modifications, options);
+        
+        if (!result.session_completed) {
+            std::cout << "\nModification cancelled by user." << std::endl;
+            backup_manager.cleanupBackups();
+            return 0;
+        }
+        
+        // Apply only accepted modifications
+        modifications = result.accepted_modifications;
+        
+        if (modifications.empty()) {
+            std::cout << "\nNo modifications accepted." << std::endl;
+            backup_manager.cleanupBackups();
+            return 0;
+        }
+    } else {
+        // Use standard diff display for small number of files
+        MultiFileDiff diff_viewer(".");
+        
+        if (!diff_viewer.showDiffsAndConfirm(modifications)) {
+            std::cout << "\nModification cancelled by user." << std::endl;
+            backup_manager.cleanupBackups();
+            return 0;
+        }
+    }
+    
+    // Apply modifications
+    std::cout << "\nApplying modifications to " << modifications.size() << " files..." << std::endl;
+    
+    size_t applied = 0;
+    for (const auto& mod : modifications) {
+        try {
+            if (mod.is_new_file) {
+                // Ensure directory exists
+                std::filesystem::path file_path(mod.file_path);
+                std::filesystem::create_directories(file_path.parent_path());
+            }
+            
+            if (m_sys->writeFile(mod.file_path, mod.new_content)) {
+                std::cout << "  ✓ " << mod.file_path;
+                if (mod.is_new_file) {
+                    std::cout << " (created)";
+                }
+                std::cout << std::endl;
+                applied++;
+            } else {
+                std::cerr << "  ✗ " << mod.file_path << " (write failed)" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "  ✗ " << mod.file_path << " (error: " << e.what() << ")" << std::endl;
+        }
+    }
+    
+    std::cout << "\nSuccessfully applied " << applied << " of " 
+              << modifications.size() << " modifications." << std::endl;
+    
+    if (applied < modifications.size()) {
+        std::cout << "\n[WARN] Some modifications failed. You can restore from backup if needed." << std::endl;
+        std::cout << "Backup location: .camus/backups/" << std::endl;
+    } else {
+        // Clean up backups on success
+        backup_manager.cleanupBackups();
+    }
+    
+    return (applied == modifications.size()) ? 0 : 1;
 }
 
 int Core::handleRefactor() {

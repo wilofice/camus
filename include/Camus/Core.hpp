@@ -42,6 +42,7 @@ private:
     // Command Handlers
     int handleInit();
     int handleModify();
+    int handleAmodify();
     int handleRefactor();
     int handleBuild();
     int handleTest();

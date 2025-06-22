@@ -21,6 +21,12 @@ struct Commands {
     std::string prompt;
     std::string file_path;
 
+    // Options for 'amodify' (project-wide modifications)
+    size_t max_files = 100;
+    size_t max_tokens = 128000;
+    std::string include_pattern;
+    std::string exclude_pattern;
+
     // Options for 'build' and 'test'
     std::vector<std::string> passthrough_args;
 };
@@ -44,6 +50,7 @@ public:
 private:
     void setupInitCommand(CLI::App& app);
     void setupModifyCommand(CLI::App& app);
+    void setupAmodifyCommand(CLI::App& app);
     void setupRefactorCommand(CLI::App& app);
     void setupBuildCommand(CLI::App& app);
     void setupTestCommand(CLI::App& app);

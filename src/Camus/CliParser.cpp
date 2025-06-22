@@ -23,6 +23,7 @@ std::shared_ptr<CLI::App> CliParser::setupCli() {
     // Define all commands
     setupInitCommand(*m_app);
     setupModifyCommand(*m_app);
+    setupAmodifyCommand(*m_app);
     setupRefactorCommand(*m_app);
     setupBuildCommand(*m_app);
     setupTestCommand(*m_app);
@@ -44,6 +45,15 @@ void CliParser::setupModifyCommand(CLI::App& app) {
     auto* sub = app.add_subcommand("modify", "Modifies a source file based on a natural language prompt.");
     sub->add_option("prompt", m_commands.prompt, "The prompt describing the desired code change.")->required();
     sub->add_option("-f,--file", m_commands.file_path, "The path to the source file to modify.")->required()->check(CLI::ExistingFile);
+}
+
+void CliParser::setupAmodifyCommand(CLI::App& app) {
+    auto* sub = app.add_subcommand("amodify", "Modifies multiple files across the project based on a high-level request.");
+    sub->add_option("prompt", m_commands.prompt, "The high-level request (e.g., 'add user authentication system').")->required();
+    sub->add_option("--max-files", m_commands.max_files, "Maximum number of files to include in context (default: 100)");
+    sub->add_option("--max-tokens", m_commands.max_tokens, "Maximum tokens for LLM context (default: 128000)");
+    sub->add_option("--include", m_commands.include_pattern, "Include only files matching this pattern (e.g., 'src/**/*.cpp')");
+    sub->add_option("--exclude", m_commands.exclude_pattern, "Exclude files matching this pattern");
 }
 
 void CliParser::setupRefactorCommand(CLI::App& app) {
