@@ -1,0 +1,5 @@
+# Camus Configuration v1.0
+model_path: /Users/genereux/Dev/llama.cpp/
+default_model: Meta-Llama-3-8B-Instruct.Q8_0.gguf
+build_command: 'cmake --build ./build'
+test_command: 'ctest --test-dir ./build'
