@@ -1,24 +1,22 @@
 // =================================================================
-// include/Camus/OllamaInteraction.hpp
+// include/Camus/OllamaInteraction.hpp (New File)
 // =================================================================
-// Concrete implementation of LlmInteraction using Ollama server.
+// Defines the interface for interacting with the Ollama server.
 
 #pragma once
 
 #include "Camus/LlmInteraction.hpp"
-#include <string>
 
 namespace Camus {
 
 class OllamaInteraction : public LlmInteraction {
 public:
     /**
-     * @brief Constructor configures the Ollama server connection.
-     * @param server_url The URL of the Ollama server (e.g., "http://localhost:11434").
-     * @param model_name The name of the model to use (e.g., "llama3").
+     * @brief Constructs the Ollama client.
+     * @param server_url The base URL of the Ollama server (e.g., http://localhost:11434).
+     * @param model_name The name of the model to use (e.g., llama3:latest).
      */
     OllamaInteraction(const std::string& server_url, const std::string& model_name);
-    ~OllamaInteraction() override = default;
 
     /**
      * @brief Sends a prompt to the Ollama server and gets a response.
