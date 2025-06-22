@@ -46,19 +46,31 @@ std::string OllamaInteraction::getCompletion(const std::string& prompt) {
         client.set_read_timeout(300); // 5 minutes for generation
         client.set_connection_timeout(30); // 30 seconds to connect
 
-        // Create JSON request body without streaming for now
+        // Create JSON request body with streaming enabled  
         nlohmann::json request_body = {
             {"model", m_model_name},
             {"prompt", prompt},
-            {"stream", false} // Disable streaming for simpler implementation
+            {"stream", true} // Enable streaming
         };
 
-        std::cout << "[INFO] Sending request to Ollama server..." << std::endl;
+        std::cout << "[INFO] Sending request to Ollama server (streaming mode)..." << std::endl;
 
-        // Make POST request
-        auto res = client.Post("/api/generate",
-                              request_body.dump(),
-                              "application/json");
+        // Since httplib's streaming POST is complex, we'll use a custom approach
+        // First, let's use the simple POST API and process the streaming response manually
+        
+        // For true streaming, we need to handle the response in chunks
+        // Ollama sends newline-delimited JSON when streaming is enabled
+        httplib::Headers headers = {{"Content-Type", "application/json"}};
+        
+        std::string accumulated_response;
+        
+        // Make the POST request
+        auto res = client.Post(
+            "/api/generate",
+            headers,
+            request_body.dump(),
+            "application/json"
+        );
 
         // Error checking
         if (!res) {
@@ -71,22 +83,31 @@ std::string OllamaInteraction::getCompletion(const std::string& prompt) {
                                    " - " + res->body);
         }
 
-        // Parse response JSON
-        auto response_json = nlohmann::json::parse(res->body);
+        // Process the streaming response
+        // When streaming is enabled, Ollama returns multiple JSON objects separated by newlines
+        std::istringstream response_stream(res->body);
+        std::string line;
         
-        // Extract the generated text
-        if (!response_json.contains("response")) {
-            throw std::runtime_error("Ollama response missing 'response' field");
+        while (std::getline(response_stream, line)) {
+            if (line.empty()) continue;
+            
+            try {
+                auto json_chunk = nlohmann::json::parse(line);
+                if (json_chunk.contains("response")) {
+                    std::string chunk_text = json_chunk["response"];
+                    std::cout << chunk_text << std::flush;
+                    accumulated_response += chunk_text;
+                }
+            } catch (const nlohmann::json::exception& e) {
+                // Ignore malformed JSON lines
+            }
         }
         
-        std::string generated_text = response_json["response"].get<std::string>();
-        
-        // Print the response
-        std::cout << generated_text << std::endl;
+        std::cout << std::endl;
         
         // Clean the output
-        clean_llm_output(generated_text);
-        return generated_text;
+        clean_llm_output(accumulated_response);
+        return accumulated_response;
 
     } catch (const std::exception& e) {
         // Re-throw with a more specific context
