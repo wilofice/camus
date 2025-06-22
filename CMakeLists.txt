@@ -54,30 +54,52 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+# 6. yaml-cpp for YAML configuration parsing
+FetchContent_Declare(
+  yaml_cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG master
+)
+FetchContent_MakeAvailable(yaml_cpp)
+
 
 # --- Project Structure ---------------------------------------------
 file(GLOB_RECURSE CAMUS_SOURCES "src/*.cpp")
 
+# Create a library for shared code between main executable and tests
+file(GLOB_RECURSE CAMUS_LIB_SOURCES "src/Camus/*.cpp")
+add_library(camus_core ${CAMUS_LIB_SOURCES})
+
 # --- Executable Target ---------------------------------------------
 add_executable(
   camus
-  ${CAMUS_SOURCES}
+  src/main.cpp
 )
 
 # --- Include Directories -------------------------------------------
 target_include_directories(camus PUBLIC include)
+target_include_directories(camus_core PUBLIC include)
+target_include_directories(camus PRIVATE ${cli11_SOURCE_DIR}/include)
+target_include_directories(camus_core PRIVATE ${cli11_SOURCE_DIR}/include)
 
 # The dtl library's headers are in its 'dtl' subdirectory.
 target_include_directories(camus PRIVATE ${diff_lib_SOURCE_DIR})
+target_include_directories(camus_core PRIVATE ${diff_lib_SOURCE_DIR})
 
 # cpp-httplib headers
 target_include_directories(camus PRIVATE ${cpp_httplib_SOURCE_DIR})
+target_include_directories(camus_core PRIVATE ${cpp_httplib_SOURCE_DIR})
 
 # nlohmann/json headers
 target_include_directories(camus PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include)
+target_include_directories(camus_core PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include)
+
+# yaml-cpp headers
+target_include_directories(camus_core PRIVATE ${yaml_cpp_SOURCE_DIR}/include)
 
 # --- Linker Settings -----------------------------------------------
-target_link_libraries(camus PRIVATE CLI11::CLI11 llama)
+target_link_libraries(camus_core PRIVATE CLI11::CLI11 llama yaml-cpp)
+target_link_libraries(camus PRIVATE camus_core)
 
 # --- Post-Build Step for Runtime Dependencies ----------------------
 add_dependencies(camus ggml-metal)
@@ -90,3 +112,10 @@ add_custom_command(
     COMMENT "Copying Metal library for runtime..."
     DEPENDS ggml-metal # This command depends on the ggml-metal target completing.
 )
+
+# --- Tests ---------------------------------------------------------
+# Enable testing
+enable_testing()
+
+# Add tests subdirectory
+add_subdirectory(tests)
