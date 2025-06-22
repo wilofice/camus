@@ -4,7 +4,6 @@
 // Revised implementation for Ollama API interaction with streaming.
 
 #include "Camus/OllamaInteraction.hpp"
-#define CPPHTTPLIB_OPENSSL_SUPPORT // Enable SSL for https if needed
 #include "httplib.h"
 #include "nlohmann/json.hpp"
 #include <iostream>
@@ -47,49 +46,23 @@ std::string OllamaInteraction::getCompletion(const std::string& prompt) {
         client.set_read_timeout(300); // 5 minutes for generation
         client.set_connection_timeout(30); // 30 seconds to connect
 
-        // Create JSON request body with streaming enabled.
+        // Create JSON request body without streaming for now
         nlohmann::json request_body = {
             {"model", m_model_name},
             {"prompt", prompt},
-            {"stream", true} // Enable streaming for real-time output
+            {"stream", false} // Disable streaming for simpler implementation
         };
 
         std::cout << "[INFO] Sending request to Ollama server..." << std::endl;
 
-        std::string accumulated_response;
+        // Make POST request
+        auto res = client.Post("/api/generate",
+                              request_body.dump(),
+                              "application/json");
 
-        // Use a content receiver lambda to process the streaming response.
-        auto res = client.Post(
-            "/api/generate",
-            request_body.dump(),
-            "application/json",
-            [&](const char *data, size_t data_length) {
-                // Each chunk from Ollama is a separate JSON object on a new line.
-                std::stringstream ss(std::string(data, data_length));
-                std::string line;
-                while (std::getline(ss, line)) {
-                    if (line.empty()) continue;
-                    try {
-                        auto json_chunk = nlohmann::json::parse(line);
-                        if (json_chunk.contains("response")) {
-                            std::string chunk_text = json_chunk["response"];
-                            std::cout << chunk_text << std::flush; // Print each piece as it arrives
-                            accumulated_response += chunk_text;
-                        }
-                    } catch (const nlohmann::json::exception& e) {
-                        // Ignore lines that are not valid JSON
-                    }
-                }
-                return true; // Keep the connection open for more data
-            }
-        );
-
-        std::cout << std::endl; // Final newline after streaming is done
-
-        // Error checking after the request is complete
+        // Error checking
         if (!res) {
-            auto err = res.error();
-            throw std::runtime_error("Failed to connect to Ollama server: " + httplib::to_string(err));
+            throw std::runtime_error("Failed to connect to Ollama server at " + m_server_url);
         }
 
         if (res->status != 200) {
@@ -98,9 +71,22 @@ std::string OllamaInteraction::getCompletion(const std::string& prompt) {
                                    " - " + res->body);
         }
 
-        // Clean the final accumulated string
-        clean_llm_output(accumulated_response);
-        return accumulated_response;
+        // Parse response JSON
+        auto response_json = nlohmann::json::parse(res->body);
+        
+        // Extract the generated text
+        if (!response_json.contains("response")) {
+            throw std::runtime_error("Ollama response missing 'response' field");
+        }
+        
+        std::string generated_text = response_json["response"].get<std::string>();
+        
+        // Print the response
+        std::cout << generated_text << std::endl;
+        
+        // Clean the output
+        clean_llm_output(generated_text);
+        return generated_text;
 
     } catch (const std::exception& e) {
         // Re-throw with a more specific context

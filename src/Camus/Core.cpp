@@ -7,6 +7,7 @@
 #include "Camus/ConfigParser.hpp"
 #include "Camus/LlmInteraction.hpp"
 #include "Camus/LlamaCppInteraction.hpp"
+#include "Camus/OllamaInteraction.hpp"
 #include "Camus/SysInteraction.hpp"
 #include "dtl/dtl.hpp" // Include the new diff library header
 #include <iostream>
@@ -34,27 +35,51 @@ Core::Core(const Commands& commands)
 {
     // Only initialize the LLM for commands that need it.
     if (m_commands.active_command != "init" && !m_commands.active_command.empty()) {
-        std::string model_dir = m_config->getStringValue("model_path");
-        std::string model_name = m_config->getStringValue("default_model");
-
-        if (model_dir.empty() || model_name.empty()) {
-            std::cerr << "[FATAL] `model_path` or `default_model` not set in .camus/config.yml" << std::endl;
-            std::cerr << "Please run 'camus init' and edit the configuration file." << std::endl;
-            m_llm = nullptr;
-            return;
+        // Read the backend configuration
+        std::string backend = m_config->getStringValue("backend");
+        if (backend.empty()) {
+            backend = "direct"; // Default to direct if not specified
         }
-
-        if (!model_dir.empty() && model_dir.back() != '/' && model_dir.back() != '\\') {
-            model_dir += '/';
-        }
-        
-        std::string full_model_path = model_dir + model_name;
         
         try {
-           m_llm = std::make_unique<LlamaCppInteraction>(full_model_path);
+            if (backend == "ollama") {
+                // Ollama backend configuration
+                std::string ollama_url = m_config->getStringValue("ollama_url");
+                std::string model_name = m_config->getStringValue("default_model");
+                
+                if (ollama_url.empty() || model_name.empty()) {
+                    std::cerr << "[FATAL] `ollama_url` or `default_model` not set in .camus/config.yml" << std::endl;
+                    std::cerr << "Please run 'camus init' and edit the configuration file." << std::endl;
+                    m_llm = nullptr;
+                    return;
+                }
+                
+                std::cout << "[INFO] Using Ollama backend" << std::endl;
+                m_llm = std::make_unique<OllamaInteraction>(ollama_url, model_name);
+                
+            } else {
+                // Direct backend configuration (llama.cpp)
+                std::string model_dir = m_config->getStringValue("model_path");
+                std::string model_name = m_config->getStringValue("default_model");
+
+                if (model_dir.empty() || model_name.empty()) {
+                    std::cerr << "[FATAL] `model_path` or `default_model` not set in .camus/config.yml" << std::endl;
+                    std::cerr << "Please run 'camus init' and edit the configuration file." << std::endl;
+                    m_llm = nullptr;
+                    return;
+                }
+
+                if (!model_dir.empty() && model_dir.back() != '/' && model_dir.back() != '\\') {
+                    model_dir += '/';
+                }
+                
+                std::string full_model_path = model_dir + model_name;
+                
+                std::cout << "[INFO] Using direct backend (llama.cpp)" << std::endl;
+                m_llm = std::make_unique<LlamaCppInteraction>(full_model_path);
+            }
         } catch (const std::exception& e) {
-            std::cerr << "[FATAL] Failed to initialize LLM with model: " << full_model_path << "\n"
-                      << "Please check the path in .camus/config.yml and ensure the model exists.\n"
+            std::cerr << "[FATAL] Failed to initialize LLM backend: " << backend << "\n"
                       << "Error: " << e.what() << std::endl;
             m_llm = nullptr;
         }
