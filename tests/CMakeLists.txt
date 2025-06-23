@@ -12,6 +12,7 @@ set(TEST_EXECUTABLES
     ResponseParserTest
     SafetyCheckerTest
     TaskClassifierTest
+    ModelAbstractionTest
     IntegrationTest
     TestRunner
 )
@@ -50,6 +51,11 @@ target_compile_features(SafetyCheckerTest PRIVATE cxx_std_17)
 add_executable(TaskClassifierTest TaskClassifierTest.cpp)
 target_link_libraries(TaskClassifierTest ${COMMON_LIBS})
 target_compile_features(TaskClassifierTest PRIVATE cxx_std_17)
+
+# ModelAbstraction tests
+add_executable(ModelAbstractionTest ModelAbstractionTest.cpp)
+target_link_libraries(ModelAbstractionTest ${COMMON_LIBS})
+target_compile_features(ModelAbstractionTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -104,6 +110,13 @@ add_custom_target(test_task_classifier
     COMMENT "Running TaskClassifier tests"
 )
 
+add_custom_target(test_model_abstraction
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/ModelAbstractionTest
+    DEPENDS ModelAbstractionTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running ModelAbstraction tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -119,6 +132,7 @@ add_test(NAME ContextBuilderTest COMMAND ContextBuilderTest)
 add_test(NAME ResponseParserTest COMMAND ResponseParserTest)
 add_test(NAME SafetyCheckerTest COMMAND SafetyCheckerTest)
 add_test(NAME TaskClassifierTest COMMAND TaskClassifierTest)
+add_test(NAME ModelAbstractionTest COMMAND ModelAbstractionTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
@@ -128,6 +142,7 @@ set_tests_properties(
     ResponseParserTest 
     SafetyCheckerTest
     TaskClassifierTest
+    ModelAbstractionTest
     IntegrationTest
     PROPERTIES 
     TIMEOUT 300  # 5 minute timeout

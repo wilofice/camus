@@ -42,7 +42,7 @@ static void clean_llm_output(std::string& output) {
 }
 
 
-LlamaCppInteraction::LlamaCppInteraction(const std::string& model_path) {
+LlamaCppInteraction::LlamaCppInteraction(const std::string& model_path) : m_model_path(model_path) {
     llama_backend_init();
 
     auto mparams = llama_model_default_params();
@@ -66,6 +66,11 @@ LlamaCppInteraction::LlamaCppInteraction(const std::string& model_path) {
         llama_free_model(m_model);
         throw std::runtime_error("Failed to create llama context.");
     }
+
+    // Initialize default metadata
+    initializeDefaultMetadata();
+    m_last_health_check = std::chrono::system_clock::now();
+    performHealthCheck();
 
     std::cout << "[INFO] Successfully loaded model: " << model_path << std::endl;
 }
@@ -162,6 +167,186 @@ std::string LlamaCppInteraction::getCompletion(const std::string& prompt) {
     clean_llm_output(result);
 
     return result;
+}
+
+LlamaCppInteraction::LlamaCppInteraction(const std::string& model_path, const ModelMetadata& metadata) 
+    : m_metadata(metadata), m_model_path(model_path) {
+    llama_backend_init();
+
+    auto mparams = llama_model_default_params();
+    mparams.n_gpu_layers = 99;
+
+    auto cparams = llama_context_default_params();
+    cparams.n_ctx = metadata.performance.max_context_tokens;
+    cparams.n_threads = std::thread::hardware_concurrency();
+    cparams.n_threads_batch = std::thread::hardware_concurrency();
+
+    m_model = llama_load_model_from_file(model_path.c_str(), mparams);
+    if (m_model == nullptr) {
+        throw std::runtime_error("Failed to load model from path: " + model_path);
+    }
+
+    m_context = llama_new_context_with_model(m_model, cparams);
+    if (m_context == nullptr) {
+        llama_free_model(m_model);
+        throw std::runtime_error("Failed to create llama context.");
+    }
+
+    m_metadata.model_path = model_path;
+    m_last_health_check = std::chrono::system_clock::now();
+    performHealthCheck();
+}
+
+InferenceResponse LlamaCppInteraction::getCompletionWithMetadata(const InferenceRequest& request) {
+    auto start_time = std::chrono::steady_clock::now();
+    
+    InferenceResponse response;
+    response.text = getCompletion(request.prompt);
+    
+    auto end_time = std::chrono::steady_clock::now();
+    response.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    response.finish_reason = "stop";
+    
+    // Update performance metrics
+    updatePerformanceMetrics(response);
+    
+    return response;
+}
+
+ModelMetadata LlamaCppInteraction::getModelMetadata() const {
+    return m_metadata;
+}
+
+bool LlamaCppInteraction::isHealthy() const {
+    return m_is_healthy && m_model != nullptr && m_context != nullptr;
+}
+
+bool LlamaCppInteraction::performHealthCheck() {
+    m_last_health_check = std::chrono::system_clock::now();
+    
+    try {
+        // Simple health check - verify model and context are valid
+        if (m_model == nullptr || m_context == nullptr) {
+            m_is_healthy = false;
+            m_metadata.health_status_message = "Model or context is null";
+            return false;
+        }
+        
+        // Try a simple token encoding to verify model works
+        const char* test_text = "test";
+        std::vector<llama_token> tokens(10);  // Small buffer for test
+        int n_tokens = llama_tokenize(m_model, test_text, 4, tokens.data(), tokens.size(), false, false);
+        if (n_tokens <= 0) {
+            m_is_healthy = false;
+            m_metadata.health_status_message = "Failed to tokenize test string";
+            return false;
+        }
+        
+        m_is_healthy = true;
+        m_metadata.is_healthy = true;
+        m_metadata.is_available = true;
+        m_metadata.health_status_message = "Healthy";
+        m_metadata.last_health_check = m_last_health_check;
+        
+        return true;
+    } catch (const std::exception& e) {
+        m_is_healthy = false;
+        m_metadata.health_status_message = "Health check failed: " + std::string(e.what());
+        return false;
+    }
+}
+
+ModelPerformance LlamaCppInteraction::getCurrentPerformance() const {
+    return m_performance;
+}
+
+bool LlamaCppInteraction::warmUp() {
+    try {
+        // Perform a small test inference to warm up the model
+        getCompletion("Hello");
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+void LlamaCppInteraction::cleanup() {
+    if (m_context) {
+        llama_free(m_context);
+        m_context = nullptr;
+    }
+    if (m_model) {
+        llama_free_model(m_model);
+        m_model = nullptr;
+    }
+    m_is_healthy = false;
+    m_metadata.is_healthy = false;
+    m_metadata.is_available = false;
+}
+
+std::string LlamaCppInteraction::getModelId() const {
+    if (m_metadata.name.empty()) {
+        return generateModelId();
+    }
+    return m_metadata.name + "_" + m_metadata.version;
+}
+
+void LlamaCppInteraction::initializeDefaultMetadata() {
+    if (m_metadata.name.empty()) {
+        m_metadata.name = "LlamaCpp_Model";
+    }
+    if (m_metadata.description.empty()) {
+        m_metadata.description = "Llama.cpp model instance";
+    }
+    if (m_metadata.version.empty()) {
+        m_metadata.version = "unknown";
+    }
+    m_metadata.provider = "llama_cpp";
+    m_metadata.model_path = m_model_path;
+    
+    // Set default capabilities if none specified
+    if (m_metadata.capabilities.empty()) {
+        m_metadata.capabilities = {ModelCapability::CODE_SPECIALIZED, ModelCapability::INSTRUCTION_TUNED};
+    }
+    
+    // Initialize performance defaults
+    if (m_metadata.performance.max_context_tokens == 0) {
+        m_metadata.performance.max_context_tokens = 4096;
+    }
+    if (m_metadata.performance.max_output_tokens == 0) {
+        m_metadata.performance.max_output_tokens = 2048;
+    }
+}
+
+void LlamaCppInteraction::updatePerformanceMetrics(const InferenceResponse& response) const {
+    // Update average latency using exponential moving average
+    if (m_performance.avg_latency.count() == 0) {
+        m_performance.avg_latency = response.response_time;
+    } else {
+        auto new_latency = static_cast<double>(response.response_time.count());
+        auto current_latency = static_cast<double>(m_performance.avg_latency.count());
+        auto updated_latency = 0.8 * current_latency + 0.2 * new_latency;
+        m_performance.avg_latency = std::chrono::milliseconds(static_cast<long>(updated_latency));
+    }
+    
+    // Update tokens per second if we have token count
+    if (response.tokens_generated > 0 && response.response_time.count() > 0) {
+        double tokens_per_ms = static_cast<double>(response.tokens_generated) / response.response_time.count();
+        double tokens_per_second = tokens_per_ms * 1000.0;
+        
+        if (m_performance.tokens_per_second == 0.0) {
+            m_performance.tokens_per_second = tokens_per_second;
+        } else {
+            m_performance.tokens_per_second = 0.8 * m_performance.tokens_per_second + 0.2 * tokens_per_second;
+        }
+    }
+}
+
+std::string LlamaCppInteraction::generateModelId() const {
+    // Generate ID from model path hash
+    std::hash<std::string> hasher;
+    auto hash = hasher(m_model_path);
+    return "llamacpp_" + std::to_string(hash);
 }
 
 } // namespace Camus

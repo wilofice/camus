@@ -1,0 +1,145 @@
+# =================================================================
+# config/models.yml
+# =================================================================
+# Model configuration schema for the multi-model pipeline system.
+
+models:
+  # Fast code-specialized model for quick tasks
+  fast_coder:
+    type: "llama_cpp"
+    path: "/models/deepseek-coder-1.3b.gguf"
+    name: "DeepSeek Coder 1.3B"
+    description: "Fast code generation and analysis model"
+    version: "1.3b"
+    capabilities:
+      - "FAST_INFERENCE"
+      - "CODE_SPECIALIZED"
+      - "INSTRUCTION_TUNED"
+    performance:
+      max_context_tokens: 4096
+      max_output_tokens: 2048
+      memory_usage_gb: 2.0
+      expected_tokens_per_second: 50.0
+      expected_latency_ms: 200
+    custom_attributes:
+      gpu_layers: "32"
+      threads: "8"
+      batch_size: "512"
+
+  # High-quality general purpose model
+  quality_assistant:
+    type: "ollama"
+    model: "llama3:8b"
+    server_url: "http://localhost:11434"
+    name: "Llama 3 8B"
+    description: "High-quality general purpose language model"
+    version: "8b"
+    capabilities:
+      - "HIGH_QUALITY"
+      - "LARGE_CONTEXT"
+      - "REASONING"
+      - "MULTILINGUAL"
+      - "INSTRUCTION_TUNED"
+      - "CHAT_OPTIMIZED"
+    performance:
+      max_context_tokens: 8192
+      max_output_tokens: 4096
+      memory_usage_gb: 8.0
+      expected_tokens_per_second: 20.0
+      expected_latency_ms: 500
+
+  # Security-focused model for security reviews
+  security_reviewer:
+    type: "llama_cpp"
+    path: "/models/security-coder-7b.gguf"
+    name: "Security Coder 7B"
+    description: "Security-focused code analysis model"
+    version: "7b-security"
+    capabilities:
+      - "SECURITY_FOCUSED"
+      - "CODE_SPECIALIZED"
+      - "HIGH_QUALITY"
+      - "REASONING"
+    performance:
+      max_context_tokens: 16384
+      max_output_tokens: 2048
+      memory_usage_gb: 6.0
+      expected_tokens_per_second: 15.0
+      expected_latency_ms: 800
+    custom_attributes:
+      gpu_layers: "35"
+      threads: "6"
+      temperature: "0.1"  # Lower temperature for security analysis
+
+  # Creative writing model
+  creative_writer:
+    type: "ollama"
+    model: "mixtral:8x7b"
+    server_url: "http://localhost:11434"
+    name: "Mixtral 8x7B"
+    description: "Creative writing and documentation model"
+    version: "8x7b"
+    capabilities:
+      - "CREATIVE_WRITING"
+      - "HIGH_QUALITY"
+      - "LARGE_CONTEXT"
+      - "MULTILINGUAL"
+    performance:
+      max_context_tokens: 32768
+      max_output_tokens: 8192
+      memory_usage_gb: 16.0
+      expected_tokens_per_second: 10.0
+      expected_latency_ms: 1200
+
+# Global model pool settings
+pool_settings:
+  health_check_interval_minutes: 5
+  warmup_on_startup: true
+  auto_cleanup_on_shutdown: true
+  max_concurrent_requests: 10
+  request_timeout_seconds: 60
+  
+  # Model selection preferences
+  selection_strategy: "quality_first"  # or "speed_first", "balanced", "custom"
+  load_balancing: "least_loaded"       # or "round_robin", "random", "performance_based"
+  
+  # Fallback behavior
+  enable_fallback: true
+  fallback_order:
+    - "quality_assistant"
+    - "fast_coder"
+    - "creative_writer"
+
+# Task type to model mappings (suggestions, not strict rules)
+task_mappings:
+  CODE_GENERATION:
+    preferred_models: ["fast_coder", "quality_assistant"]
+    fallback_models: ["creative_writer"]
+    
+  CODE_ANALYSIS:
+    preferred_models: ["quality_assistant", "fast_coder"]
+    fallback_models: ["security_reviewer"]
+    
+  REFACTORING:
+    preferred_models: ["fast_coder", "quality_assistant"]
+    fallback_models: ["security_reviewer"]
+    
+  BUG_FIXING:
+    preferred_models: ["fast_coder", "quality_assistant"]
+    fallback_models: ["security_reviewer"]
+    
+  DOCUMENTATION:
+    preferred_models: ["creative_writer", "quality_assistant"]
+    fallback_models: ["fast_coder"]
+    
+  SECURITY_REVIEW:
+    preferred_models: ["security_reviewer", "quality_assistant"]
+    fallback_models: ["fast_coder"]
+    
+  SIMPLE_QUERY:
+    preferred_models: ["fast_coder"]
+    fallback_models: ["quality_assistant"]
+    
+  UNKNOWN:
+    preferred_models: ["quality_assistant"]
+    fallback_models: ["fast_coder", "creative_writer"]
