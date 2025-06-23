@@ -29,6 +29,7 @@ std::shared_ptr<CLI::App> CliParser::setupCli() {
     setupTestCommand(*m_app);
     setupCommitCommand(*m_app);
     setupPushCommand(*m_app);
+    setupModelCommand(*m_app);
 
     return m_app;
 }
@@ -78,6 +79,31 @@ void CliParser::setupCommitCommand(CLI::App& app) {
 
 void CliParser::setupPushCommand(CLI::App& app) {
     app.add_subcommand("push", "Pushes committed changes to the remote repository.");
+}
+
+void CliParser::setupModelCommand(CLI::App& app) {
+    auto* model_cmd = app.add_subcommand("model", "Manage and interact with language models");
+    
+    // List subcommand
+    auto* list_cmd = model_cmd->add_subcommand("list", "List all configured models and their status");
+    list_cmd->callback([this]() { m_commands.model_subcommand = "list"; });
+    
+    // Test subcommand
+    auto* test_cmd = model_cmd->add_subcommand("test", "Test a specific model or all models");
+    test_cmd->add_option("model", m_commands.model_name, "Model name to test (leave empty to test all)");
+    test_cmd->callback([this]() { m_commands.model_subcommand = "test"; });
+    
+    // Info subcommand
+    auto* info_cmd = model_cmd->add_subcommand("info", "Show detailed information about a model");
+    info_cmd->add_option("model", m_commands.model_name, "Model name to get info for")->required();
+    info_cmd->callback([this]() { m_commands.model_subcommand = "info"; });
+    
+    // Reload subcommand
+    auto* reload_cmd = model_cmd->add_subcommand("reload", "Reload model configuration from file");
+    reload_cmd->callback([this]() { m_commands.model_subcommand = "reload"; });
+    
+    // Make model command trigger active_command
+    model_cmd->callback([this]() { m_commands.active_command = "model"; });
 }
 
 } // namespace Camus

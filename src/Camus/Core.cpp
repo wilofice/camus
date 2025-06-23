@@ -18,6 +18,7 @@
 #include "Camus/AmodifyConfig.hpp"
 #include "Camus/SafetyChecker.hpp"
 #include "Camus/Logger.hpp"
+#include "Camus/ModelRegistry.hpp"
 #include "dtl/dtl.hpp" // Include the new diff library header
 #include <iostream>
 #include <stdexcept>
@@ -101,7 +102,8 @@ Core::Core(const Commands& commands)
 Core::~Core() = default;
 
 int Core::run() {
-    if (m_commands.active_command != "init" && !m_commands.active_command.empty() && m_llm == nullptr) {
+    if (m_commands.active_command != "init" && m_commands.active_command != "model" && 
+        !m_commands.active_command.empty() && m_llm == nullptr) {
         std::cerr << "LLM not available. Cannot proceed." << std::endl;
         return 1;
     }
@@ -122,6 +124,8 @@ int Core::run() {
         return handleCommit();
     } else if (m_commands.active_command == "push") {
         return handlePush();
+    } else if (m_commands.active_command == "model") {
+        return handleModel();
     } else if (m_commands.active_command.empty()){
         return 0;
     }
@@ -833,6 +837,96 @@ int Core::handleCommit() {
 int Core::handlePush() {
     std::cout << "Executing 'push' command (Not yet implemented)." << std::endl;
     return 0;
+}
+
+int Core::handleModel() {
+    // Create model registry with configuration
+    RegistryConfig registry_config;
+    registry_config.config_file_path = ".camus/models.yml";
+    registry_config.auto_discover = true;
+    registry_config.validate_on_load = true;
+    registry_config.enable_health_checks = false; // Disable for CLI commands
+    
+    ModelRegistry registry(registry_config);
+    
+    if (m_commands.model_subcommand == "list") {
+        // List all models
+        std::cout << registry.getAllModelsInfo() << std::endl;
+        return 0;
+        
+    } else if (m_commands.model_subcommand == "test") {
+        // Test model(s)
+        if (m_commands.model_name.empty()) {
+            // Test all models
+            auto model_ids = registry.getLoadedModels();
+            if (model_ids.empty()) {
+                std::cout << "No models loaded to test." << std::endl;
+                return 1;
+            }
+            
+            std::cout << "Testing all " << model_ids.size() << " loaded models...\n" << std::endl;
+            
+            bool all_passed = true;
+            for (const auto& model_id : model_ids) {
+                std::cout << "Testing model: " << model_id << "..." << std::endl;
+                auto [success, duration] = registry.testModel(model_id);
+                
+                if (success) {
+                    std::cout << "✓ " << model_id << " test passed (" 
+                              << duration.count() << "ms)" << std::endl;
+                } else {
+                    std::cout << "✗ " << model_id << " test failed" << std::endl;
+                    all_passed = false;
+                }
+                std::cout << std::endl;
+            }
+            
+            return all_passed ? 0 : 1;
+        } else {
+            // Test specific model
+            std::cout << "Testing model: " << m_commands.model_name << "..." << std::endl;
+            auto [success, duration] = registry.testModel(m_commands.model_name);
+            
+            if (success) {
+                std::cout << "✓ Test passed (" << duration.count() << "ms)" << std::endl;
+                return 0;
+            } else {
+                std::cout << "✗ Test failed" << std::endl;
+                return 1;
+            }
+        }
+        
+    } else if (m_commands.model_subcommand == "info") {
+        // Get model info
+        std::cout << registry.getModelInfo(m_commands.model_name) << std::endl;
+        return 0;
+        
+    } else if (m_commands.model_subcommand == "reload") {
+        // Reload configuration
+        std::cout << "Reloading model configuration..." << std::endl;
+        auto status = registry.reloadConfiguration();
+        
+        std::cout << "\nReload complete:" << std::endl;
+        std::cout << "  Total configured: " << status.total_configured << std::endl;
+        std::cout << "  Successfully loaded: " << status.successfully_loaded << std::endl;
+        std::cout << "  Failed to load: " << status.failed_to_load << std::endl;
+        
+        if (status.failed_to_load > 0) {
+            std::cout << "\nFailed models:" << std::endl;
+            for (const auto& result : status.load_results) {
+                if (!result.success) {
+                    std::cout << "  - " << result.model_id << ": " 
+                              << result.error_message << std::endl;
+                }
+            }
+        }
+        
+        return status.failed_to_load > 0 ? 1 : 0;
+        
+    } else {
+        std::cerr << "Unknown model subcommand: " << m_commands.model_subcommand << std::endl;
+        return 1;
+    }
 }
 
 } // namespace Camus

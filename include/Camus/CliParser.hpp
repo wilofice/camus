@@ -29,6 +29,10 @@ struct Commands {
 
     // Options for 'build' and 'test'
     std::vector<std::string> passthrough_args;
+    
+    // Options for 'model' command
+    std::string model_subcommand;  // list, test, info, reload
+    std::string model_name;        // For test and info subcommands
 };
 
 class CliParser {
@@ -56,6 +60,7 @@ private:
     void setupTestCommand(CLI::App& app);
     void setupCommitCommand(CLI::App& app);
     void setupPushCommand(CLI::App& app);
+    void setupModelCommand(CLI::App& app);
 
     std::shared_ptr<CLI::App> m_app;
     Commands m_commands;

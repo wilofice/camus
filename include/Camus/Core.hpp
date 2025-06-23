@@ -48,6 +48,7 @@ private:
     int handleTest();
     int handleCommit();
     int handlePush();
+    int handleModel();
 
     const Commands& m_commands;
     std::unique_ptr<ConfigParser> m_config;

@@ -1,0 +1,62 @@
+# =================================================================
+# .camus/models.yml
+# =================================================================
+# Model configuration for the Camus multi-model pipeline system.
+
+models:
+  # Example configuration - adjust paths and settings for your system
+  
+  # Fast local model using llama.cpp
+  fast_local:
+    type: "llama_cpp"
+    path: "/path/to/your/model.gguf"  # UPDATE THIS PATH
+    name: "Fast Local Model"
+    description: "Fast inference model for quick tasks"
+    version: "1.0"
+    capabilities:
+      - "FAST_INFERENCE"
+      - "CODE_SPECIALIZED"
+    performance:
+      max_context_tokens: 4096
+      max_output_tokens: 2048
+      memory_usage_gb: 2.0
+      expected_tokens_per_second: 50.0
+      expected_latency_ms: 200
+    custom_attributes:
+      gpu_layers: "32"
+      threads: "8"
+
+  # Example Ollama model
+  # ollama_model:
+  #   type: "ollama"
+  #   server_url: "http://localhost:11434"
+  #   model: "llama3:latest"
+  #   name: "Ollama Llama3"
+  #   description: "Ollama-hosted Llama 3 model"
+  #   version: "latest"
+  #   capabilities:
+  #     - "HIGH_QUALITY"
+  #     - "LARGE_CONTEXT"
+  #   performance:
+  #     max_context_tokens: 8192
+  #     max_output_tokens: 4096
+  #     memory_usage_gb: 8.0
+  #     expected_tokens_per_second: 20.0
+  #     expected_latency_ms: 500
+
+# Global model pool settings
+pool_settings:
+  health_check_interval_minutes: 5
+  warmup_on_startup: false
+  auto_cleanup_on_shutdown: true
+  max_concurrent_requests: 10
+  request_timeout_seconds: 60
+  
+  # Model selection preferences
+  selection_strategy: "balanced"  # or "speed_first", "quality_first", "custom"
+  load_balancing: "least_loaded"  # or "round_robin", "random", "performance_based"
+  
+  # Fallback behavior
+  enable_fallback: true
+  fallback_order:
+    - "fast_local"
