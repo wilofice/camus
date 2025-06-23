@@ -18,6 +18,7 @@ set(TEST_EXECUTABLES
     LoadBalancerTest
     ModelOrchestratorTest
     SingleModelStrategyTest
+    EnsembleStrategyTest
     IntegrationTest
     TestRunner
 )
@@ -86,6 +87,11 @@ target_compile_features(ModelOrchestratorTest PRIVATE cxx_std_17)
 add_executable(SingleModelStrategyTest SingleModelStrategyTest.cpp)
 target_link_libraries(SingleModelStrategyTest ${COMMON_LIBS})
 target_compile_features(SingleModelStrategyTest PRIVATE cxx_std_17)
+
+# EnsembleStrategy tests
+add_executable(EnsembleStrategyTest EnsembleStrategyTest.cpp)
+target_link_libraries(EnsembleStrategyTest ${COMMON_LIBS})
+target_compile_features(EnsembleStrategyTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -182,6 +188,13 @@ add_custom_target(test_single_model_strategy
     COMMENT "Running SingleModelStrategy tests"
 )
 
+add_custom_target(test_ensemble_strategy
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/EnsembleStrategyTest
+    DEPENDS EnsembleStrategyTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running EnsembleStrategy tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -203,6 +216,7 @@ add_test(NAME ModelSelectorTest COMMAND ModelSelectorTest)
 add_test(NAME LoadBalancerTest COMMAND LoadBalancerTest)
 add_test(NAME ModelOrchestratorTest COMMAND ModelOrchestratorTest)
 add_test(NAME SingleModelStrategyTest COMMAND SingleModelStrategyTest)
+add_test(NAME EnsembleStrategyTest COMMAND EnsembleStrategyTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
@@ -217,6 +231,7 @@ set_tests_properties(
     ModelSelectorTest
     LoadBalancerTest
     SingleModelStrategyTest
+    EnsembleStrategyTest
     IntegrationTest
     PROPERTIES 
     TIMEOUT 300  # 5 minute timeout
