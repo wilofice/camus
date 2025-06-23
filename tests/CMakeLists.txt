@@ -14,6 +14,7 @@ set(TEST_EXECUTABLES
     TaskClassifierTest
     ModelAbstractionTest
     ModelRegistryTest
+    ModelSelectorTest
     IntegrationTest
     TestRunner
 )
@@ -62,6 +63,11 @@ target_compile_features(ModelAbstractionTest PRIVATE cxx_std_17)
 add_executable(ModelRegistryTest ModelRegistryTest.cpp)
 target_link_libraries(ModelRegistryTest ${COMMON_LIBS})
 target_compile_features(ModelRegistryTest PRIVATE cxx_std_17)
+
+# ModelSelector tests
+add_executable(ModelSelectorTest ModelSelectorTest.cpp)
+target_link_libraries(ModelSelectorTest ${COMMON_LIBS})
+target_compile_features(ModelSelectorTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -130,6 +136,13 @@ add_custom_target(test_model_registry
     COMMENT "Running ModelRegistry tests"
 )
 
+add_custom_target(test_model_selector
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/ModelSelectorTest
+    DEPENDS ModelSelectorTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running ModelSelector tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -147,6 +160,7 @@ add_test(NAME SafetyCheckerTest COMMAND SafetyCheckerTest)
 add_test(NAME TaskClassifierTest COMMAND TaskClassifierTest)
 add_test(NAME ModelAbstractionTest COMMAND ModelAbstractionTest)
 add_test(NAME ModelRegistryTest COMMAND ModelRegistryTest)
+add_test(NAME ModelSelectorTest COMMAND ModelSelectorTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
@@ -158,6 +172,7 @@ set_tests_properties(
     TaskClassifierTest
     ModelAbstractionTest
     ModelRegistryTest
+    ModelSelectorTest
     IntegrationTest
     PROPERTIES 
     TIMEOUT 300  # 5 minute timeout

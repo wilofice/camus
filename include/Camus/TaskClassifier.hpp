@@ -228,4 +228,18 @@ private:
                                          size_t max_alternatives = 3);
 };
 
+/**
+ * @brief Convert TaskType to string representation
+ * @param task_type The task type to convert
+ * @return String representation of the task type
+ */
+std::string taskTypeToString(TaskType task_type);
+
+/**
+ * @brief Convert string to TaskType
+ * @param str String representation of task type
+ * @return TaskType enum value
+ */
+TaskType stringToTaskType(const std::string& str);
+
 } // namespace Camus

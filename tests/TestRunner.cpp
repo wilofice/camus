@@ -18,6 +18,7 @@ int runSafetyCheckerTests();
 int runTaskClassifierTests();
 int runModelAbstractionTests();
 int runModelRegistryTests();
+int runModelSelectorTests();
 int runIntegrationTests();
 
 struct TestSuite {
@@ -40,6 +41,7 @@ public:
             {"TaskClassifier", runTaskClassifierTests},
             {"ModelAbstraction", runModelAbstractionTests},
             {"ModelRegistry", runModelRegistryTests},
+            {"ModelSelector", runModelSelectorTests},
             {"Integration", runIntegrationTests}
         };
     }
@@ -167,6 +169,11 @@ int runModelAbstractionTests() {
 
 int runModelRegistryTests() {
     int result = std::system("cd /Users/genereux/Dev/camus && ./build/tests/ModelRegistryTest");
+    return result;
+}
+
+int runModelSelectorTests() {
+    int result = std::system("cd /Users/genereux/Dev/camus && ./build/tests/ModelSelectorTest");
     return result;
 }
 

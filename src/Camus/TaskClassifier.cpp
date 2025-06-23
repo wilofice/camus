@@ -542,4 +542,37 @@ std::vector<TaskType> TaskClassifier::getAlternatives(const std::unordered_map<T
     return alternatives;
 }
 
+std::string taskTypeToString(TaskType task_type) {
+    switch (task_type) {
+        case TaskType::CODE_GENERATION:
+            return "CODE_GENERATION";
+        case TaskType::CODE_ANALYSIS:
+            return "CODE_ANALYSIS";
+        case TaskType::REFACTORING:
+            return "REFACTORING";
+        case TaskType::BUG_FIXING:
+            return "BUG_FIXING";
+        case TaskType::DOCUMENTATION:
+            return "DOCUMENTATION";
+        case TaskType::SECURITY_REVIEW:
+            return "SECURITY_REVIEW";
+        case TaskType::SIMPLE_QUERY:
+            return "SIMPLE_QUERY";
+        case TaskType::UNKNOWN:
+        default:
+            return "UNKNOWN";
+    }
+}
+
+TaskType stringToTaskType(const std::string& str) {
+    if (str == "CODE_GENERATION") return TaskType::CODE_GENERATION;
+    if (str == "CODE_ANALYSIS") return TaskType::CODE_ANALYSIS;
+    if (str == "REFACTORING") return TaskType::REFACTORING;
+    if (str == "BUG_FIXING") return TaskType::BUG_FIXING;
+    if (str == "DOCUMENTATION") return TaskType::DOCUMENTATION;
+    if (str == "SECURITY_REVIEW") return TaskType::SECURITY_REVIEW;
+    if (str == "SIMPLE_QUERY") return TaskType::SIMPLE_QUERY;
+    return TaskType::UNKNOWN;
+}
+
 } // namespace Camus
