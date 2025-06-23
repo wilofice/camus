@@ -1,0 +1,29 @@
+
+models:
+  test_model_a:
+    type: "test_type"
+    path: "/test/model_a.gguf"
+    name: "Test Model A"
+    description: "Test model for load balancing"
+    capabilities:
+      - "FAST_INFERENCE"
+    performance:
+      max_context_tokens: 4096
+      max_output_tokens: 2048
+      memory_usage_gb: 2.0
+      expected_tokens_per_second: 100.0
+      expected_latency_ms: 100
+
+  test_model_b:
+    type: "test_type"
+    path: "/test/model_b.gguf"
+    name: "Test Model B"
+    description: "Another test model for load balancing"
+    capabilities:
+      - "HIGH_QUALITY"
+    performance:
+      max_context_tokens: 8192
+      max_output_tokens: 4096
+      memory_usage_gb: 4.0
+      expected_tokens_per_second: 50.0
+      expected_latency_ms: 200

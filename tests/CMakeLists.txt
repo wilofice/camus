@@ -15,6 +15,7 @@ set(TEST_EXECUTABLES
     ModelAbstractionTest
     ModelRegistryTest
     ModelSelectorTest
+    LoadBalancerTest
     IntegrationTest
     TestRunner
 )
@@ -68,6 +69,11 @@ target_compile_features(ModelRegistryTest PRIVATE cxx_std_17)
 add_executable(ModelSelectorTest ModelSelectorTest.cpp)
 target_link_libraries(ModelSelectorTest ${COMMON_LIBS})
 target_compile_features(ModelSelectorTest PRIVATE cxx_std_17)
+
+# LoadBalancer tests
+add_executable(LoadBalancerTest LoadBalancerTest.cpp)
+target_link_libraries(LoadBalancerTest ${COMMON_LIBS})
+target_compile_features(LoadBalancerTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -143,6 +149,13 @@ add_custom_target(test_model_selector
     COMMENT "Running ModelSelector tests"
 )
 
+add_custom_target(test_load_balancer
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/LoadBalancerTest
+    DEPENDS LoadBalancerTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running LoadBalancer tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -161,6 +174,7 @@ add_test(NAME TaskClassifierTest COMMAND TaskClassifierTest)
 add_test(NAME ModelAbstractionTest COMMAND ModelAbstractionTest)
 add_test(NAME ModelRegistryTest COMMAND ModelRegistryTest)
 add_test(NAME ModelSelectorTest COMMAND ModelSelectorTest)
+add_test(NAME LoadBalancerTest COMMAND LoadBalancerTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
@@ -173,6 +187,7 @@ set_tests_properties(
     ModelAbstractionTest
     ModelRegistryTest
     ModelSelectorTest
+    LoadBalancerTest
     IntegrationTest
     PROPERTIES 
     TIMEOUT 300  # 5 minute timeout
