@@ -15,6 +15,7 @@ int runProjectScannerTests();
 int runContextBuilderTests();
 int runResponseParserTests();
 int runSafetyCheckerTests();
+int runTaskClassifierTests();
 int runIntegrationTests();
 
 struct TestSuite {
@@ -34,6 +35,7 @@ public:
             {"ContextBuilder", runContextBuilderTests},
             {"ResponseParser", runResponseParserTests},
             {"SafetyChecker", runSafetyCheckerTests},
+            {"TaskClassifier", runTaskClassifierTests},
             {"Integration", runIntegrationTests}
         };
     }
@@ -146,6 +148,11 @@ int runResponseParserTests() {
 
 int runSafetyCheckerTests() {
     int result = std::system("cd /Users/genereux/Dev/camus && ./build/tests/SafetyCheckerTest");
+    return result;
+}
+
+int runTaskClassifierTests() {
+    int result = std::system("cd /Users/genereux/Dev/camus && ./build/tests/TaskClassifierTest");
     return result;
 }
 

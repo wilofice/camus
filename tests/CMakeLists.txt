@@ -11,6 +11,7 @@ set(TEST_EXECUTABLES
     ContextBuilderTest
     ResponseParserTest
     SafetyCheckerTest
+    TaskClassifierTest
     IntegrationTest
     TestRunner
 )
@@ -44,6 +45,11 @@ target_compile_features(ResponseParserTest PRIVATE cxx_std_17)
 add_executable(SafetyCheckerTest SafetyCheckerTest.cpp)
 target_link_libraries(SafetyCheckerTest ${COMMON_LIBS})
 target_compile_features(SafetyCheckerTest PRIVATE cxx_std_17)
+
+# TaskClassifier tests
+add_executable(TaskClassifierTest TaskClassifierTest.cpp)
+target_link_libraries(TaskClassifierTest ${COMMON_LIBS})
+target_compile_features(TaskClassifierTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -91,6 +97,13 @@ add_custom_target(test_safety_checker
     COMMENT "Running SafetyChecker tests"
 )
 
+add_custom_target(test_task_classifier
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/TaskClassifierTest
+    DEPENDS TaskClassifierTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running TaskClassifier tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -105,6 +118,7 @@ add_test(NAME ProjectScannerTest COMMAND ProjectScannerTest)
 add_test(NAME ContextBuilderTest COMMAND ContextBuilderTest)
 add_test(NAME ResponseParserTest COMMAND ResponseParserTest)
 add_test(NAME SafetyCheckerTest COMMAND SafetyCheckerTest)
+add_test(NAME TaskClassifierTest COMMAND TaskClassifierTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
@@ -113,6 +127,7 @@ set_tests_properties(
     ContextBuilderTest 
     ResponseParserTest 
     SafetyCheckerTest
+    TaskClassifierTest
     IntegrationTest
     PROPERTIES 
     TIMEOUT 300  # 5 minute timeout

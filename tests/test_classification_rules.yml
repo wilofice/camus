@@ -1,0 +1,88 @@
+# =================================================================
+# test_classification_rules.yml
+# =================================================================
+# Example configuration for task classification rules
+
+classification:
+  confidence_threshold: 0.7
+  enable_keyword_analysis: true
+  enable_pattern_matching: true
+  enable_context_analysis: true
+  
+  # Weights for different task types (optional)
+  type_weights:
+    CODE_GENERATION: 1.0
+    CODE_ANALYSIS: 1.0
+    REFACTORING: 1.2      # Slightly prefer refactoring
+    BUG_FIXING: 1.1       # Slightly prefer bug fixing
+    DOCUMENTATION: 0.9    # Slightly de-emphasize documentation
+    SECURITY_REVIEW: 1.3  # Strongly prefer security reviews
+    SIMPLE_QUERY: 0.8     # De-emphasize simple queries
+    
+  # Additional keywords for each task type (extends default set)
+  additional_keywords:
+    CODE_GENERATION:
+      - "construct"
+      - "initialize"
+      - "scaffold"
+      - "prototype"
+    
+    CODE_ANALYSIS:
+      - "dissect"
+      - "breakdown"
+      - "interpret"
+      - "decode"
+    
+    REFACTORING:
+      - "modernize"
+      - "streamline"
+      - "consolidate"
+      - "modularize"
+    
+    BUG_FIXING:
+      - "troubleshoot"
+      - "remedy"
+      - "patch"
+      - "hotfix"
+    
+    DOCUMENTATION:
+      - "clarify"
+      - "elaborate"
+      - "exemplify"
+      - "illustrate"
+    
+    SECURITY_REVIEW:
+      - "harden"
+      - "fortify"
+      - "audit"
+      - "penetration"
+    
+    SIMPLE_QUERY:
+      - "clarification"
+      - "brief"
+      - "quick"
+      - "simple"
+
+  # Context-based rules
+  context_rules:
+    file_extensions:
+      ".test.cpp": [BUG_FIXING, CODE_ANALYSIS]
+      ".test.js": [BUG_FIXING, CODE_ANALYSIS]
+      ".md": [DOCUMENTATION]
+      ".rst": [DOCUMENTATION]
+      ".security.cpp": [SECURITY_REVIEW]
+      ".auth.cpp": [SECURITY_REVIEW]
+      
+    file_paths:
+      - pattern: ".*/test/.*"
+        types: [BUG_FIXING, CODE_ANALYSIS]
+        weight: 0.3
+      - pattern: ".*/doc.*/.*"
+        types: [DOCUMENTATION]
+        weight: 0.4
+      - pattern: ".*/security/.*"
+        types: [SECURITY_REVIEW]
+        weight: 0.5
+      - pattern: ".*/auth.*/.*"
+        types: [SECURITY_REVIEW]
+        weight: 0.4
