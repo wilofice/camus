@@ -16,6 +16,7 @@ set(TEST_EXECUTABLES
     ModelRegistryTest
     ModelSelectorTest
     LoadBalancerTest
+    ModelOrchestratorTest
     IntegrationTest
     TestRunner
 )
@@ -74,6 +75,11 @@ target_compile_features(ModelSelectorTest PRIVATE cxx_std_17)
 add_executable(LoadBalancerTest LoadBalancerTest.cpp)
 target_link_libraries(LoadBalancerTest ${COMMON_LIBS})
 target_compile_features(LoadBalancerTest PRIVATE cxx_std_17)
+
+# ModelOrchestrator tests
+add_executable(ModelOrchestratorTest ModelOrchestratorTest.cpp)
+target_link_libraries(ModelOrchestratorTest ${COMMON_LIBS})
+target_compile_features(ModelOrchestratorTest PRIVATE cxx_std_17)
 
 # Integration tests
 add_executable(IntegrationTest IntegrationTest.cpp)
@@ -156,6 +162,13 @@ add_custom_target(test_load_balancer
     COMMENT "Running LoadBalancer tests"
 )
 
+add_custom_target(test_model_orchestrator
+    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/ModelOrchestratorTest
+    DEPENDS ModelOrchestratorTest
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running ModelOrchestrator tests"
+)
+
 add_custom_target(test_integration
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/IntegrationTest
     DEPENDS IntegrationTest
@@ -175,6 +188,7 @@ add_test(NAME ModelAbstractionTest COMMAND ModelAbstractionTest)
 add_test(NAME ModelRegistryTest COMMAND ModelRegistryTest)
 add_test(NAME ModelSelectorTest COMMAND ModelSelectorTest)
 add_test(NAME LoadBalancerTest COMMAND LoadBalancerTest)
+add_test(NAME ModelOrchestratorTest COMMAND ModelOrchestratorTest)
 add_test(NAME IntegrationTest COMMAND IntegrationTest)
 
 # Set test properties
